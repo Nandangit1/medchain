@@ -1,4 +1,6 @@
 const { RECORD_TYPES } = require("../constants/records");
+const { DOCTOR_VERIFICATION_STATUS, ROLES } = require("../constants/roles");
+const User = require("../models/User");
 const accessPermissionRepository = require("../repositories/accessPermissionRepository");
 const diagnosisRepository = require("../repositories/diagnosisRepository");
 const medicalRecordRepository = require("../repositories/medicalRecordRepository");
@@ -15,6 +17,45 @@ const medicalRecordService = require("./medicalRecordService");
  * patients are derived from that. This means revoking a share removes the
  * patient from the doctor's view with no extra bookkeeping.
  */
+
+/**
+ * Searchable directory of verified doctors.
+ *
+ * Readable by any signed-in user, because a patient cannot share a record
+ * without first finding the doctor. Only verified, active doctors appear, and
+ * the projection is deliberately narrow — professional details only, never
+ * contact details or account metadata.
+ */
+const listDirectory = async ({ query }) => {
+  const pagination = buildPagination(query);
+
+  const filter = {
+    role: ROLES.DOCTOR,
+    "doctorProfile.verificationStatus": DOCTOR_VERIFICATION_STATUS.VERIFIED,
+  };
+
+  if (query.search && query.search.trim().length >= 2) {
+    const searchRegex = new RegExp(query.search.trim(), "i");
+    filter.$or = [
+      { name: searchRegex },
+      { "doctorProfile.specialization": searchRegex },
+      { "doctorProfile.hospitalName": searchRegex },
+    ];
+  }
+
+  const [doctors, totalItems] = await Promise.all([
+    User.find(filter)
+      .select("name doctorProfile.specialization doctorProfile.qualification doctorProfile.hospitalName doctorProfile.experienceYears")
+      .sort({ name: 1 })
+      .skip(pagination.skip)
+      .limit(pagination.limit)
+      .lean()
+      .exec(),
+    User.countDocuments(filter),
+  ]);
+
+  return { doctors, pagination: buildPaginationMeta(totalItems, pagination) };
+};
 
 const assertRecordShared = async (doctor, recordId) => {
   const record = await medicalRecordRepository.findById(recordId);
@@ -133,6 +174,7 @@ const getDashboard = async ({ actor }) => {
 module.exports = {
   createDiagnosis,
   getDashboard,
+  listDirectory,
   listMyDiagnoses,
   listPatients,
   listRecordDiagnoses,

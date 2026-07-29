@@ -13,12 +13,20 @@ const {
 
 const router = express.Router();
 
-/**
- * Every route here demands a doctor whose credentials an administrator has
- * verified. `requireVerifiedDoctor` also rejects patients and admins, so no
- * separate authorize() call is needed.
- */
 router.use(protect);
+
+/**
+ * The directory is readable by ANY signed-in user, because a patient must be
+ * able to find a doctor before they can share a record. Declared before the
+ * requireVerifiedDoctor guard below, which governs everything after it.
+ */
+router.get("/directory", listRules, validateRequest, doctorController.getDirectory);
+
+/**
+ * From here down, every route demands a doctor whose credentials an
+ * administrator has verified. `requireVerifiedDoctor` also rejects patients
+ * and admins, so no separate authorize() call is needed.
+ */
 router.use(requireVerifiedDoctor);
 
 router.get("/me/dashboard", doctorController.getDashboard);

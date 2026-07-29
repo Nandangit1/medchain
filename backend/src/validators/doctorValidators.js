@@ -55,4 +55,12 @@ exports.prescriptionRules = [
 ];
 
 exports.recordIdRules = [mongoIdParam("recordId", "Record id")];
-exports.listRules = paginationRules;
+
+exports.listRules = [
+  ...paginationRules,
+  query("search")
+    .optional({ checkFalsy: true })
+    .trim()
+    .isLength({ min: 2, max: 80 })
+    .withMessage("Search must contain 2 to 80 characters."),
+];

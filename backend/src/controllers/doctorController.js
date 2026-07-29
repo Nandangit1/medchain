@@ -2,6 +2,12 @@ const doctorService = require("../services/doctorService");
 const catchAsync = require("../utils/catchAsync");
 const { sendSuccess } = require("../utils/sendResponse");
 
+exports.getDirectory = catchAsync(async (req, res) => {
+  const result = await doctorService.listDirectory({ query: req.query });
+
+  sendSuccess(res, 200, "Verified doctors fetched successfully.", result);
+});
+
 exports.getDashboard = catchAsync(async (req, res) => {
   const dashboard = await doctorService.getDashboard({ actor: req.user });
 
