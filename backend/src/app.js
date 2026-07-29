@@ -1,0 +1,77 @@
+const compression = require("compression");
+const cors = require("cors");
+const express = require("express");
+const mongoSanitize = require("express-mongo-sanitize");
+const rateLimit = require("express-rate-limit");
+const helmet = require("helmet");
+const hpp = require("hpp");
+const morgan = require("morgan");
+
+const { env } = require("./config/env");
+const AppError = require("./utils/AppError");
+const adminRoutes = require("./routes/adminRoutes");
+const authRoutes = require("./routes/authRoutes");
+const healthRoutes = require("./routes/healthRoutes");
+const medicalRecordRoutes = require("./routes/medicalRecordRoutes");
+const globalErrorHandler = require("./middlewares/errorMiddleware");
+
+const app = express();
+
+app.set("trust proxy", 1);
+
+app.use(helmet());
+app.use(
+  cors({
+    origin: env.CORS_ORIGIN,
+    credentials: true,
+  })
+);
+app.use(compression());
+
+if (env.NODE_ENV === "development") {
+  app.use(morgan("dev"));
+}
+
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 200,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: {
+      status: "fail",
+      message: "Too many requests from this IP. Please try again later.",
+    },
+  })
+);
+
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+app.use(mongoSanitize());
+app.use(hpp());
+
+app.get("/", (_req, res) => {
+  res.status(200).json({
+    status: "success",
+    message: "Blockchain Telemedicine API is running.",
+    data: {
+      health: "/api/v1/health",
+      auth: "/api/v1/auth",
+      admin: "/api/v1/admin",
+      records: "/api/v1/records",
+    },
+  });
+});
+
+app.use("/api/v1/health", healthRoutes);
+app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/admin", adminRoutes);
+app.use("/api/v1/records", medicalRecordRoutes);
+
+app.all("*", (req, _res, next) => {
+  next(new AppError(`Route ${req.originalUrl} was not found.`, 404));
+});
+
+app.use(globalErrorHandler);
+
+module.exports = app;
