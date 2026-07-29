@@ -50,6 +50,23 @@ async function main() {
   const deploymentTx = contract.deploymentTransaction();
   const receipt = await deploymentTx.wait();
 
+  /**
+   * The backend is the only party that can act on an authenticated admin's
+   * instruction, so the registrar key also needs ADMIN_ROLE to mirror doctor
+   * verification on-chain. Without this, `verifyDoctor` reverts for the
+   * backend and every subsequent access grant fails.
+   *
+   * DEFAULT_ADMIN_ROLE deliberately stays with the deployer alone: that key
+   * can revoke the registrar's privileges if the service key is ever
+   * compromised, and it should be kept offline in production.
+   */
+  if (registrar.address !== deployer.address) {
+    const adminRole = await contract.ADMIN_ROLE();
+    const grantTx = await contract.grantRole(adminRole, registrar.address);
+    await grantTx.wait();
+    console.log(`Granted ADMIN_ROLE to registrar (${grantTx.hash})`);
+  }
+
   console.log(`\nDeployed to : ${address}`);
   console.log(`Tx hash     : ${receipt.hash}`);
   console.log(`Block       : ${receipt.blockNumber}`);

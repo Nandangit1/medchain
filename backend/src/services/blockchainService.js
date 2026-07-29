@@ -315,6 +315,231 @@ const anchorRecord = async ({ patient, record }) => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Access grants
+// ---------------------------------------------------------------------------
+
+/**
+ * Records an access grant on-chain.
+ *
+ * Uses `grantAccessFor` (CUSTODIAN_ROLE) because the backend signs on the
+ * patient's behalf — custodial addresses hold no gas. A patient with a linked
+ * external wallet signs `grantAccess` directly from the browser instead, and
+ * the backend only mirrors the result.
+ *
+ * Never throws: a chain failure leaves the grant pending, and off-chain
+ * authorisation still holds, so a doctor is never wrongly let in.
+ *
+ * @returns {Promise<object>} the grantTx sub-document to persist.
+ */
+const grantAccessOnChain = async ({ record, doctor }) => {
+  if (!isEnabled()) {
+    return { status: BLOCKCHAIN_SYNC_STATUS.PENDING };
+  }
+
+  try {
+    const { contract } = getConnection();
+    const onChainId = record.blockchain?.onChainId;
+
+    if (!onChainId) {
+      throw new Error("Record is not anchored on-chain yet. Run npm run backfill:anchors.");
+    }
+
+    const { address } = await ensureParticipantRegistered(doctor);
+
+    // The contract refuses to grant to an unverified doctor, so mirror the
+    // off-chain verification first.
+    if (!(await contract.isVerifiedDoctor(address))) {
+      await submit((overrides) => contract.verifyDoctor(address, overrides));
+    }
+
+    const expiry = record.__grantExpiresAt
+      ? Math.floor(new Date(record.__grantExpiresAt).getTime() / 1000)
+      : 0;
+
+    const result = await submit((overrides) =>
+      contract.grantAccessFor(onChainId, address, expiry, overrides)
+    );
+
+    await logTransaction({
+      type: CHAIN_TX_TYPES.GRANT_ACCESS,
+      status: BLOCKCHAIN_SYNC_STATUS.CONFIRMED,
+      txHash: result.txHash,
+      blockNumber: result.blockNumber,
+      gasUsed: result.gasUsed,
+      onChainId: String(onChainId),
+      relatedUser: doctor._id,
+      relatedRecord: record._id,
+      confirmedAt: new Date(),
+    });
+
+    return {
+      status: BLOCKCHAIN_SYNC_STATUS.CONFIRMED,
+      txHash: result.txHash,
+      blockNumber: result.blockNumber,
+    };
+  } catch (error) {
+    await logTransaction({
+      type: CHAIN_TX_TYPES.GRANT_ACCESS,
+      status: BLOCKCHAIN_SYNC_STATUS.FAILED,
+      relatedUser: doctor._id,
+      relatedRecord: record._id,
+      error: summarizeError(error),
+    });
+
+    return { status: BLOCKCHAIN_SYNC_STATUS.FAILED, lastError: summarizeError(error) };
+  }
+};
+
+const revokeAccessOnChain = async ({ record, doctor }) => {
+  if (!isEnabled()) {
+    return { status: BLOCKCHAIN_SYNC_STATUS.PENDING };
+  }
+
+  try {
+    const { contract } = getConnection();
+    const onChainId = record.blockchain?.onChainId;
+
+    if (!onChainId) {
+      throw new Error("Record is not anchored on-chain.");
+    }
+
+    const address = doctor.walletAddress || deriveCustodialAddress(doctor._id);
+    const result = await submit((overrides) =>
+      contract.revokeAccess(onChainId, address, overrides)
+    );
+
+    await logTransaction({
+      type: CHAIN_TX_TYPES.REVOKE_ACCESS,
+      status: BLOCKCHAIN_SYNC_STATUS.CONFIRMED,
+      txHash: result.txHash,
+      blockNumber: result.blockNumber,
+      gasUsed: result.gasUsed,
+      onChainId: String(onChainId),
+      relatedUser: doctor._id,
+      relatedRecord: record._id,
+      confirmedAt: new Date(),
+    });
+
+    return {
+      status: BLOCKCHAIN_SYNC_STATUS.CONFIRMED,
+      txHash: result.txHash,
+      blockNumber: result.blockNumber,
+    };
+  } catch (error) {
+    await logTransaction({
+      type: CHAIN_TX_TYPES.REVOKE_ACCESS,
+      status: BLOCKCHAIN_SYNC_STATUS.FAILED,
+      relatedUser: doctor._id,
+      relatedRecord: record._id,
+      error: summarizeError(error),
+    });
+
+    return { status: BLOCKCHAIN_SYNC_STATUS.FAILED, lastError: summarizeError(error) };
+  }
+};
+
+/** Asks the contract directly whether a viewer may read a record. */
+const hasAccessOnChain = async (onChainId, viewerAddress) => {
+  if (!isEnabled() || !onChainId) {
+    return null;
+  }
+
+  try {
+    const { contract } = getConnection();
+    return await contract.hasAccess(onChainId, viewerAddress);
+  } catch {
+    return null;
+  }
+};
+
+/** Fire-and-forget audit entry written after a successful decrypt. */
+const logAccessOnChain = async ({ record, viewer }) => {
+  if (!isEnabled() || !record.blockchain?.onChainId) {
+    return null;
+  }
+
+  try {
+    const { contract } = getConnection();
+    const address = viewer.walletAddress || deriveCustodialAddress(viewer._id);
+
+    const result = await submit((overrides) =>
+      contract.logAccess(record.blockchain.onChainId, address, overrides)
+    );
+
+    await logTransaction({
+      type: CHAIN_TX_TYPES.LOG_ACCESS,
+      status: BLOCKCHAIN_SYNC_STATUS.CONFIRMED,
+      txHash: result.txHash,
+      blockNumber: result.blockNumber,
+      gasUsed: result.gasUsed,
+      onChainId: String(record.blockchain.onChainId),
+      relatedUser: viewer._id,
+      relatedRecord: record._id,
+      confirmedAt: new Date(),
+    });
+
+    return result.txHash;
+  } catch (error) {
+    await logTransaction({
+      type: CHAIN_TX_TYPES.LOG_ACCESS,
+      status: BLOCKCHAIN_SYNC_STATUS.FAILED,
+      relatedUser: viewer._id,
+      relatedRecord: record._id,
+      error: summarizeError(error),
+    });
+
+    return null;
+  }
+};
+
+/**
+ * Reconstructs a record's full history straight from the event log.
+ *
+ * This reads the chain, not MongoDB, so it is the version a patient can trust
+ * even if the database were altered.
+ */
+const getRecordHistory = async (onChainId) => {
+  if (!isEnabled() || !onChainId) {
+    return [];
+  }
+
+  const { contract } = getConnection();
+  const id = BigInt(onChainId);
+
+  const queries = [
+    { name: "RecordAnchored", filter: contract.filters.RecordAnchored(id) },
+    { name: "AccessGranted", filter: contract.filters.AccessGranted(id) },
+    { name: "AccessRevoked", filter: contract.filters.AccessRevoked(id) },
+    { name: "AccessLogged", filter: contract.filters.AccessLogged(id) },
+    { name: "RecordDeactivated", filter: contract.filters.RecordDeactivated(id) },
+  ];
+
+  const results = await Promise.all(
+    queries.map(async ({ name, filter }) => {
+      const events = await contract.queryFilter(filter, 0, "latest");
+
+      return events.map((event) => ({
+        event: name,
+        blockNumber: event.blockNumber,
+        txHash: event.transactionHash,
+        timestamp: event.args?.timestamp ? Number(event.args.timestamp) * 1000 : null,
+        doctor: event.args?.doctor ?? null,
+        viewer: event.args?.viewer ?? null,
+        custodial: event.args?.custodial ?? null,
+        expiresAt:
+          event.args?.expiresAt && Number(event.args.expiresAt) > 0
+            ? new Date(Number(event.args.expiresAt) * 1000)
+            : null,
+      }));
+    })
+  );
+
+  return results
+    .flat()
+    .sort((a, b) => a.blockNumber - b.blockNumber || (a.timestamp ?? 0) - (b.timestamp ?? 0));
+};
+
 /**
  * Asks the chain whether a document matches what was anchored.
  * This is the independent check — it does not consult MongoDB at all.
@@ -386,10 +611,15 @@ module.exports = {
   deriveCustodialAddress,
   ensureParticipantRegistered,
   getOnChainRecord,
+  getRecordHistory,
   getStatus,
+  grantAccessOnChain,
+  hasAccessOnChain,
   isEnabled,
+  logAccessOnChain,
   logTransaction,
   resetNonce,
+  revokeAccessOnChain,
   verifyDoctorOnChain,
   verifyOnChain,
 };

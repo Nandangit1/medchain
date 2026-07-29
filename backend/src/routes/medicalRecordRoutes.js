@@ -1,10 +1,16 @@
 const express = require("express");
 
+const accessController = require("../controllers/accessController");
 const medicalRecordController = require("../controllers/medicalRecordController");
 const { ROLES } = require("../constants/roles");
 const { authorize, protect } = require("../middlewares/authMiddleware");
 const { uploadSingleRecord } = require("../middlewares/uploadMiddleware");
 const validateRequest = require("../middlewares/validateRequest");
+const {
+  grantAccessRules,
+  recordIdRules: accessRecordIdRules,
+  revokeAccessRules,
+} = require("../validators/accessValidators");
 const {
   listRecordRules,
   recordIdRules,
@@ -31,9 +37,13 @@ router.post(
   medicalRecordController.uploadRecord
 );
 
+/**
+ * Doctors are included here: the service scopes their results to exactly the
+ * records currently shared with them.
+ */
 router.get(
   "/",
-  authorize(ROLES.PATIENT, ROLES.ADMIN),
+  authorize(ROLES.PATIENT, ROLES.DOCTOR, ROLES.ADMIN),
   listRecordRules,
   validateRequest,
   medicalRecordController.getRecords
@@ -41,16 +51,19 @@ router.get(
 
 router.get(
   "/:recordId",
-  authorize(ROLES.PATIENT, ROLES.ADMIN),
+  authorize(ROLES.PATIENT, ROLES.DOCTOR, ROLES.ADMIN),
   recordIdRules,
   validateRequest,
   medicalRecordController.getRecordById
 );
 
-// Plaintext retrieval — owner only. Admins are rejected inside the service.
+/**
+ * Plaintext retrieval. Admins are rejected inside the service; doctors must
+ * hold a live access grant, verified against MongoDB and the chain.
+ */
 router.get(
   "/:recordId/download",
-  authorize(ROLES.PATIENT),
+  authorize(ROLES.PATIENT, ROLES.DOCTOR),
   recordIdRules,
   validateRequest,
   medicalRecordController.downloadRecord
@@ -58,11 +71,48 @@ router.get(
 
 router.get(
   "/:recordId/verify",
-  authorize(ROLES.PATIENT, ROLES.ADMIN),
+  authorize(ROLES.PATIENT, ROLES.DOCTOR, ROLES.ADMIN),
   recordIdRules,
   validateRequest,
   medicalRecordController.verifyRecordIntegrity
 );
+
+/** Provenance straight from the contract's event log. */
+router.get(
+  "/:recordId/history",
+  authorize(ROLES.PATIENT, ROLES.ADMIN),
+  accessRecordIdRules,
+  validateRequest,
+  accessController.getRecordHistory
+);
+
+// --- Sharing (Module 5) ----------------------------------------------------
+
+router.get(
+  "/:recordId/access",
+  authorize(ROLES.PATIENT),
+  accessRecordIdRules,
+  validateRequest,
+  accessController.listRecordAccess
+);
+
+router.post(
+  "/:recordId/share",
+  authorize(ROLES.PATIENT),
+  grantAccessRules,
+  validateRequest,
+  accessController.grantAccess
+);
+
+router.delete(
+  "/:recordId/share/:doctorId",
+  authorize(ROLES.PATIENT),
+  revokeAccessRules,
+  validateRequest,
+  accessController.revokeAccess
+);
+
+// --- Metadata management ---------------------------------------------------
 
 router.patch(
   "/:recordId",

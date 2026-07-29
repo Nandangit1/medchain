@@ -36,6 +36,19 @@ const run = async () => {
   console.log(`Connected to chain ${status.chainId} at block ${status.blockNumber}`);
   console.log(`Contract: ${status.contractAddress}\n`);
 
+  /**
+   * Redeploying the contract orphans every existing anchor: the ids point into
+   * a contract that no longer holds them. `--reset` clears those stale anchors
+   * so they are re-created against the current deployment.
+   */
+  if (process.argv.includes("--reset")) {
+    const result = await MedicalRecord.updateMany(
+      {},
+      { $set: { blockchain: { status: BLOCKCHAIN_SYNC_STATUS.PENDING } } }
+    );
+    console.log(`Reset ${result.modifiedCount} record(s) to pending.\n`);
+  }
+
   const pending = await MedicalRecord.find({
     isDeleted: { $ne: true },
     "blockchain.status": { $ne: BLOCKCHAIN_SYNC_STATUS.CONFIRMED },

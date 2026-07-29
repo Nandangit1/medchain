@@ -1,5 +1,6 @@
 const { DOCTOR_VERIFICATION_STATUS, ROLES } = require("../constants/roles");
 const User = require("../models/User");
+const blockchainService = require("../services/blockchainService");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 const { buildPagination, buildPaginationMeta } = require("../utils/pagination");
@@ -111,8 +112,22 @@ exports.verifyDoctor = catchAsync(async (req, res, next) => {
 
   await doctor.save({ validateBeforeSave: false });
 
+  /**
+   * Mirror the decision on-chain so the contract will accept access grants to
+   * this doctor. Best-effort: the off-chain verification stands either way,
+   * and grantAccessOnChain re-checks and self-heals if this did not land.
+   */
+  let onChain = null;
+
+  if (blockchainService.isEnabled()) {
+    onChain = await blockchainService
+      .verifyDoctorOnChain(doctor, req.user._id)
+      .catch((error) => ({ error: error.message }));
+  }
+
   return sendSuccess(res, 200, "Doctor verified successfully.", {
     doctor: doctor.toAdminObject(),
+    onChain,
   });
 });
 

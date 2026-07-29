@@ -1,10 +1,11 @@
 const { ALLOWED_MIME_TYPES, BLOCKCHAIN_SYNC_STATUS, RECORD_STATUS } = require("../constants/records");
-const { ROLES } = require("../constants/roles");
+const { DOCTOR_VERIFICATION_STATUS, ROLES } = require("../constants/roles");
 const medicalRecordRepository = require("../repositories/medicalRecordRepository");
 const userRepository = require("../repositories/userRepository");
 const AppError = require("../utils/AppError");
 const { buildPagination, buildPaginationMeta } = require("../utils/pagination");
 const { hashesMatch, sha256Hex } = require("../utils/hash");
+const accessControlService = require("./accessControlService");
 const blockchainService = require("./blockchainService");
 const encryptionService = require("./encryptionService");
 const ipfsService = require("./ipfs");
@@ -35,15 +36,19 @@ const ownerIdOf = (record) => String(record.patient?._id ?? record.patient);
 
 const isOwner = (actor, record) => ownerIdOf(record) === String(actor._id);
 
-const assertCanViewMetadata = (actor, record) => {
-  if (actor.role === ROLES.ADMIN || isOwner(actor, record)) {
+const assertCanViewMetadata = async (actor, record) => {
+  if (await canViewMetadata(actor, record)) {
     return;
   }
 
   throw new AppError("You do not have permission to access this medical record.", 403);
 };
 
-const assertCanReadContent = (actor, record) => {
+/**
+ * Async since Module 5: a doctor's entitlement depends on a live access grant,
+ * which is checked against MongoDB and then against the chain.
+ */
+const assertCanReadContent = async (actor, record) => {
   if (isOwner(actor, record)) {
     return;
   }
@@ -55,7 +60,34 @@ const assertCanReadContent = (actor, record) => {
     );
   }
 
+  if (actor.role === ROLES.DOCTOR) {
+    if (actor.doctorProfile?.verificationStatus !== DOCTOR_VERIFICATION_STATUS.VERIFIED) {
+      throw new AppError("Your account must be verified by an administrator first.", 403);
+    }
+
+    if (await accessControlService.doctorCanRead(actor, record)) {
+      return;
+    }
+
+    throw new AppError(
+      "The patient has not granted you access to this record, or the grant has expired.",
+      403
+    );
+  }
+
   throw new AppError("You do not have permission to access this medical record.", 403);
+};
+
+const canViewMetadata = async (actor, record) => {
+  if (actor.role === ROLES.ADMIN || isOwner(actor, record)) {
+    return true;
+  }
+
+  if (actor.role === ROLES.DOCTOR) {
+    return accessControlService.doctorCanRead(actor, record);
+  }
+
+  return false;
 };
 
 const assertCanModify = (actor, record) => {
@@ -80,12 +112,23 @@ const normalizeTags = (tags) => {
   ].slice(0, 10);
 };
 
-const buildListFilter = (actor, query) => {
+const buildListFilter = async (actor, query) => {
   const filter = {};
 
   // A patient is hard-scoped to their own data regardless of what they send.
   if (actor.role === ROLES.PATIENT) {
     filter.patient = actor._id;
+  } else if (actor.role === ROLES.DOCTOR) {
+    /**
+     * A doctor sees exactly the records currently shared with them — never a
+     * whole patient. Resolving the id list up front means the scope cannot be
+     * widened by a crafted query parameter.
+     */
+    filter._id = { $in: await accessControlService.listLiveRecordIdsForDoctor(actor._id) };
+
+    if (query.patientId) {
+      filter.patient = query.patientId;
+    }
   } else if (query.patientId) {
     filter.patient = query.patientId;
   }
@@ -128,20 +171,14 @@ const buildListFilter = (actor, query) => {
  * encryption so it remains a stable identity for the document itself, which
  * is the value Module 4 anchors on-chain.
  */
-const uploadRecord = async ({ actor, file, payload }) => {
+const createRecord = async ({ actor, patient, file, payload }) => {
   if (!file) {
     throw new AppError("A medical report file is required.", 400);
   }
 
-  const patient = await userRepository.findActivePatientById(actor._id);
-
-  if (!patient) {
-    throw new AppError("Only an active patient account can upload medical records.", 403);
-  }
-
   const fileHash = sha256Hex(file.buffer);
 
-  const duplicate = await medicalRecordRepository.existsByPatientAndHash(actor._id, fileHash);
+  const duplicate = await medicalRecordRepository.existsByPatientAndHash(patient._id, fileHash);
   if (duplicate) {
     throw new AppError("This exact file has already been uploaded to your records.", 409);
   }
@@ -151,14 +188,14 @@ const uploadRecord = async ({ actor, file, payload }) => {
   const stored = await ipfsService.upload(ciphertext, {
     fileName: `${fileHash.slice(0, 16)}.enc`,
     metadata: {
-      patientId: String(actor._id),
+      patientId: String(patient._id),
       recordType: payload.recordType,
     },
   });
 
   try {
     const record = await medicalRecordRepository.create({
-      patient: actor._id,
+      patient: patient._id,
       uploadedBy: actor._id,
       uploadedByRole: actor.role,
       title: payload.title,
@@ -202,7 +239,7 @@ const uploadRecord = async ({ actor, file, payload }) => {
       await record.save({ validateBeforeSave: false });
     }
 
-    return record.toClientObject();
+    return record;
   } catch (error) {
     /**
      * Compensating action: the pin succeeded but the metadata write did not.
@@ -214,9 +251,63 @@ const uploadRecord = async ({ actor, file, payload }) => {
   }
 };
 
+/** Patient uploading one of their own documents. */
+const uploadRecord = async ({ actor, file, payload }) => {
+  const patient = await userRepository.findActivePatientById(actor._id);
+
+  if (!patient) {
+    throw new AppError("Only an active patient account can upload medical records.", 403);
+  }
+
+  const record = await createRecord({ actor, patient, file, payload });
+  return record.toClientObject();
+};
+
+/**
+ * Verified doctor uploading a prescription or report FOR a patient.
+ *
+ * Gated on an existing share: a doctor may only write into the chart of a
+ * patient who has already granted them access to something. Without that rule
+ * any verified doctor could push documents into any patient's record.
+ */
+const uploadRecordForPatient = async ({ actor, patientId, file, payload }) => {
+  if (actor.doctorProfile?.verificationStatus !== DOCTOR_VERIFICATION_STATUS.VERIFIED) {
+    throw new AppError("Your account must be verified by an administrator first.", 403);
+  }
+
+  const patient = await userRepository.findActivePatientById(patientId);
+
+  if (!patient) {
+    throw new AppError("Patient not found.", 404);
+  }
+
+  const sharedRecordIds = await accessControlService.listLiveRecordIdsForDoctor(actor._id);
+  const patientRecords = await medicalRecordRepository.findManyPaginated(
+    { _id: { $in: sharedRecordIds }, patient: patient._id },
+    { skip: 0, limit: 1 }
+  );
+
+  if (patientRecords.totalItems === 0) {
+    throw new AppError(
+      "You can only add documents for a patient who has shared at least one record with you.",
+      403
+    );
+  }
+
+  const record = await createRecord({ actor, patient, file, payload });
+
+  /**
+   * The uploading doctor keeps read access to what they just wrote, otherwise
+   * they could not open their own prescription.
+   */
+  await accessControlService.grantSystemAccess({ record, patient, doctor: actor });
+
+  return record.toClientObject();
+};
+
 const listRecords = async ({ actor, query }) => {
   const pagination = buildPagination(query);
-  const filter = buildListFilter(actor, query);
+  const filter = await buildListFilter(actor, query);
 
   const { records, totalItems } = await medicalRecordRepository.findManyPaginated(filter, pagination);
 
@@ -233,7 +324,7 @@ const getRecordById = async ({ actor, recordId }) => {
     throw new AppError("Medical record not found.", 404);
   }
 
-  assertCanViewMetadata(actor, record);
+  await assertCanViewMetadata(actor, record);
 
   return record.toClientObject();
 };
@@ -254,7 +345,7 @@ const downloadRecord = async ({ actor, recordId }) => {
     throw new AppError("Medical record not found.", 404);
   }
 
-  assertCanReadContent(actor, record);
+  await assertCanReadContent(actor, record);
 
   const ciphertext = await ipfsService.fetchByCid(record.storage.cid);
   const plaintext = encryptionService.decryptBuffer(ciphertext, record.encryption);
@@ -264,6 +355,15 @@ const downloadRecord = async ({ actor, recordId }) => {
       "Integrity check failed: the retrieved file does not match its recorded hash. Download blocked.",
       422
     );
+  }
+
+  /**
+   * A doctor reading a patient's file is exactly the event an audit trail
+   * exists to capture. Written on-chain, and never allowed to fail the read:
+   * the clinician already holds the bytes by this point.
+   */
+  if (actor.role === ROLES.DOCTOR) {
+    blockchainService.logAccessOnChain({ record, viewer: actor }).catch(() => null);
   }
 
   return { buffer: plaintext, record };
@@ -280,7 +380,7 @@ const verifyRecordIntegrity = async ({ actor, recordId }) => {
     throw new AppError("Medical record not found.", 404);
   }
 
-  assertCanViewMetadata(actor, record);
+  await assertCanViewMetadata(actor, record);
 
   /**
    * The on-chain check is INDEPENDENT of MongoDB: it asks the contract whether
@@ -399,5 +499,6 @@ module.exports = {
   listRecords,
   updateRecordMetadata,
   uploadRecord,
+  uploadRecordForPatient,
   verifyRecordIntegrity,
 };

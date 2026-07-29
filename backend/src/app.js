@@ -10,9 +10,12 @@ const morgan = require("morgan");
 const { env } = require("./config/env");
 const AppError = require("./utils/AppError");
 const adminRoutes = require("./routes/adminRoutes");
+const appointmentRoutes = require("./routes/appointmentRoutes");
 const authRoutes = require("./routes/authRoutes");
+const doctorRoutes = require("./routes/doctorRoutes");
 const healthRoutes = require("./routes/healthRoutes");
 const medicalRecordRoutes = require("./routes/medicalRecordRoutes");
+const patientRoutes = require("./routes/patientRoutes");
 const globalErrorHandler = require("./middlewares/errorMiddleware");
 
 const app = express();
@@ -59,6 +62,9 @@ app.get("/", (_req, res) => {
       auth: "/api/v1/auth",
       admin: "/api/v1/admin",
       records: "/api/v1/records",
+      patients: "/api/v1/patients",
+      doctors: "/api/v1/doctors",
+      appointments: "/api/v1/appointments",
     },
   });
 });
@@ -67,6 +73,9 @@ app.use("/api/v1/health", healthRoutes);
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/records", medicalRecordRoutes);
+app.use("/api/v1/patients", patientRoutes);
+app.use("/api/v1/doctors", doctorRoutes);
+app.use("/api/v1/appointments", appointmentRoutes);
 
 app.all("*", (req, _res, next) => {
   next(new AppError(`Route ${req.originalUrl} was not found.`, 404));
