@@ -1,6 +1,11 @@
 # Blockchain-Based Secure Telemedicine System — Execution Plan
 
-Last updated: 2026-07-29 · Modules 1–4 of 11 complete
+Last updated: 2026-07-29 · Modules 1–10 complete · Module 11 in progress
+
+**Current state:** backend, smart contract and all three portals are built and
+running. 47 API integration tests and 38 contract tests pass. What remains is
+Module 11 — the cross-cutting features nobody owned, the documentation set, and
+production hardening. See §11.
 
 Legend: `S` ≈ half a day · `M` ≈ 1–2 days · `L` ≈ 3–5 days
 
@@ -48,7 +53,7 @@ Already resolved before this plan existed:
 - [x] **Git installed and repository initialised** — Git 2.55 installed via winget; `git init` done, first commit made. Verified before committing that `backend/.env`, `node_modules/`, `.local/` and the blockchain build output are all ignored, and that no key material appears in the staged diff.
 - [x] **Root `README.md`** — architecture, prerequisites, quick start, security table, API summary, module status.
 - [ ] **Back up `FILE_ENCRYPTION_KEY` and `CUSTODIAL_WALLET_SEED`** `S` — **still outstanding, and it is on you.** Both live only in `backend/.env`, which is git-ignored by design. Losing the first makes every stored record permanently unreadable; losing the second orphans every user's on-chain identity. Copy them somewhere outside the project folder today.
-- [ ] **ESLint + Prettier** `S` — still not configured. Cheapest now, before the frontend triples the codebase.
+- [x] **ESLint + Prettier** — configured for the backend (`npm run lint`, `npm run format`), currently clean. The rule set targets real defects rather than formatting, which Prettier owns.
 
 ---
 

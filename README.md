@@ -141,13 +141,39 @@ npm run dev            # http://localhost:5000
 Verify: `GET http://localhost:5000/api/v1/health` should report
 `"database": "connected"`.
 
-### 3. Run the tests
-
-With the API running, in a second terminal:
+### 3. Start the blockchain (optional but recommended)
 
 ```bash
-cd backend
-npm run test:integration
+cd blockchain
+npm install
+npx hardhat node                                        # terminal A
+npx hardhat run scripts/deploy.js --network localhost   # terminal B
+```
+
+Copy the printed contract address into `backend/.env` as `CONTRACT_ADDRESS`,
+set `BLOCKCHAIN_ENABLED=true`, and restart the API. With it disabled the whole
+platform still works — records simply stay at `blockchain.status: "pending"`
+until `npm run backfill:anchors` is run.
+
+### 4. Start the frontend
+
+```bash
+cd frontend
+npm install
+cp .env.example .env
+npm run dev            # http://localhost:3000
+```
+
+> The dev server is pinned to port 3000 because that is the backend's
+> `CORS_ORIGIN`. Change one and you must change the other.
+
+### 5. Run the tests
+
+With MongoDB, the API and the Hardhat node running:
+
+```bash
+cd backend    && npm run test:integration    # 47 API tests
+cd blockchain && npx hardhat test            # 38 contract tests
 ```
 
 ---
@@ -223,7 +249,11 @@ Base URL: `http://localhost:5000/api/v1`
 | Health | `GET /health` |
 | Auth | `POST /auth/register` · `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` · `PATCH /auth/me` · `PATCH /auth/change-password` |
 | Admin | `GET /admin/users` · `GET /admin/users/:id` · `PATCH /admin/users/:id/status` · `GET /admin/doctors` · `PATCH /admin/doctors/:id/verify` · `PATCH /admin/doctors/:id/reject` |
-| Records | `POST /records` · `GET /records` · `GET /records/:id` · `GET /records/:id/download` · `GET /records/:id/verify` · `PATCH /records/:id` · `DELETE /records/:id` |
+| Records | `POST /records` · `GET /records` · `GET /records/:id` · `GET /records/:id/download` · `GET /records/:id/verify` · `GET /records/:id/history` · `PATCH /records/:id` · `DELETE /records/:id` |
+| Sharing | `GET /records/:id/access` · `POST /records/:id/share` · `DELETE /records/:id/share/:doctorId` |
+| Patient | `GET /patients/me/dashboard` · `GET /patients/me/grants` · `GET /patients/me/wallet` |
+| Doctor | `GET /doctors/directory` · `GET /doctors/me/dashboard` · `GET /doctors/me/patients` · `GET /doctors/me/records` · `GET /doctors/me/diagnoses` · `POST /doctors/records/:id/diagnoses` · `POST /doctors/patients/:id/prescriptions` |
+| Appointments | `POST /appointments` · `GET /appointments` · `GET /appointments/:id` · `PATCH /appointments/:id/confirm` · `PATCH /appointments/:id/cancel` · `PATCH /appointments/:id/complete` · `PATCH /appointments/:id/no-show` |
 
 Every response uses the same envelope:
 
@@ -243,11 +273,12 @@ Full reference: [`docs/api/medical-records.md`](docs/api/medical-records.md)
 | 2 | Admin doctor verification, user management | Complete |
 | 3 | Medical records, encryption, IPFS | Complete |
 | 4 | Smart contract, Hardhat, ethers.js | Complete |
-| 5 | Record sharing, grant/revoke, chain history | Pending |
-| 6 | Doctor workflows, diagnosis, prescriptions | Pending |
-| 7 | React foundation | Pending |
-| 8–10 | Patient / doctor / admin dashboards | Pending |
-| 11 | Hardening, documentation, deployment | Pending |
+| 5 | Record sharing, grant/revoke, chain history | Complete |
+| 6 | Doctor workflows, diagnosis, prescriptions | Complete |
+| 6b | Appointments | Complete |
+| 7 | React foundation | Complete |
+| 8–10 | Patient / doctor / admin dashboards | Complete |
+| 11 | Hardening, documentation, deployment | In progress |
 
 Detailed task breakdown: [`PROJECT_TODO.md`](PROJECT_TODO.md)
 

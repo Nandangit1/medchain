@@ -110,7 +110,13 @@ const decryptBuffer = (ciphertext, envelope) => {
     contentKey.fill(0);
 
     return plaintext;
-  } catch (error) {
+  } catch {
+    /**
+     * The underlying error is deliberately not surfaced. A failed GCM tag and
+     * a malformed envelope are indistinguishable to a caller, and leaking
+     * crypto internals into an API response tells an attacker which of their
+     * guesses was closer.
+     */
     throw new AppError(
       "Decryption failed: the stored file failed its authenticity check and may have been tampered with.",
       422
