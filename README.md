@@ -242,7 +242,7 @@ Full reference: [`docs/api/medical-records.md`](docs/api/medical-records.md)
 | 1 | Backend foundation, auth, JWT, roles | Complete |
 | 2 | Admin doctor verification, user management | Complete |
 | 3 | Medical records, encryption, IPFS | Complete |
-| 4 | Smart contract, Hardhat, ethers.js | In progress |
+| 4 | Smart contract, Hardhat, ethers.js | Complete |
 | 5 | Record sharing, grant/revoke, chain history | Pending |
 | 6 | Doctor workflows, diagnosis, prescriptions | Pending |
 | 7 | React foundation | Pending |

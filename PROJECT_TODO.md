@@ -1,6 +1,6 @@
 # Blockchain-Based Secure Telemedicine System — Execution Plan
 
-Last updated: 2026-07-29 · Modules 1–3 of 11 complete
+Last updated: 2026-07-29 · Modules 1–4 of 11 complete
 
 Legend: `S` ≈ half a day · `M` ≈ 1–2 days · `L` ≈ 3–5 days
 
@@ -14,69 +14,65 @@ Legend: `S` ≈ half a day · `M` ≈ 1–2 days · `L` ≈ 3–5 days
 | Admin user + doctor verification | Done (M2) |
 | Medical records, encryption, IPFS | Done (M3) |
 | Service + repository layers | Introduced M3; M1–M2 not yet migrated |
-| Smart contract / blockchain | Not started |
+| Smart contract / blockchain | Done (M4) — deployed locally, anchoring live |
 | Frontend | Not started |
 | Appointments, notifications, audit log | Not started, **and unassigned in the original plan** |
-| Documentation | Only `docs/api/medical-records.md` |
-| Version control | **None — git is not installed** |
+| Documentation | README, records API, blockchain layer |
+| Version control | Git installed, repo initialised, first commit made |
 
 Backend API surface today: 6 auth endpoints, 6 admin endpoints, 7 record endpoints.
+Tests: 17 API integration + 38 smart contract, all passing.
 
 ---
 
-## 2. Decisions to make before writing more code
+## 2. Decisions — resolved
 
-The original brief contains six redundancies or unassigned items. Resolving
-them now avoids building something twice.
+The original brief contained six redundancies or unassigned items. All are now
+settled; the rationale is kept here because it belongs in the report.
 
-- [ ] **Formik vs React Hook Form** — both were listed. Recommend **React Hook Form + Yup**: lighter, fewer re-renders, and Formik is effectively in maintenance mode. Drop Formik.
-- [ ] **Ganache vs Hardhat Network** — both were listed. Recommend **Hardhat Network only**. Ganache was sunset by Truffle/ConsenSys in 2023; Hardhat Network gives the same local chain plus `console.log` in Solidity and stack traces. Drop Ganache.
-- [ ] **Refresh-token transport** — the brief lists refresh tokens, `cookie-parser` *and* "CSRF considerations", which only hang together if refresh tokens live in an httpOnly cookie. Recommend: access token in memory (Bearer), refresh token in an httpOnly `SameSite=Strict` cookie, plus a CSRF token on the refresh route. If you'd rather keep it simple, stay Bearer-only and drop `cookie-parser` + CSRF from the report.
-- [ ] **Chart library** — the UI brief requires charts but no library was listed. Recommend **Recharts** (React-native API, composable, works with Bootstrap).
-- [ ] **Appointments scope** — appointments appear in the DB design and in both the patient and doctor modules, but no module owned them. Slotted below as **Module 6b**. Confirm they're in scope; cutting them is the single biggest scope saving available.
-- [ ] **Wallet model** — does each *user* connect MetaMask (true decentralisation, patient pays gas), or does the backend hold one custodial signer (simpler demo, patient never sees gas)? This materially changes Modules 4, 5 and 8. Recommend **custodial backend signer for record anchoring + MetaMask for patient-signed access grants** — the interesting part is on-chain, the tedious part isn't.
+- [x] **Formik vs React Hook Form** → **React Hook Form + Yup**. Lighter, fewer re-renders, and Formik is effectively in maintenance mode. Formik dropped.
+- [x] **Ganache vs Hardhat Network** → **Hardhat Network only**. Ganache was sunset by Truffle/ConsenSys in 2023; Hardhat gives the same local chain plus Solidity `console.log` and stack traces. Ganache dropped.
+- [x] **Chart library** → **Recharts**. The UI brief required charts but named no library.
+- [x] **Appointments scope** → in scope, slotted as **Module 6b**. Still the single biggest scope cut available if time runs short.
+- [x] **Wallet model** → **custodial identity + patient-signed grants.** Each user gets a deterministic address derived from a server seed, so records can be anchored before anyone installs MetaMask. Those addresses never sign and never need gas. Patients who link a real wallet sign their own grants; `CUSTODIAN_ROLE` covers everyone else and is separately revocable. See `docs/blockchain.md`.
+- [ ] **Refresh-token transport** — the only one still open, and it is not blocking. The brief lists refresh tokens, `cookie-parser` *and* "CSRF considerations", which cohere only if refresh tokens live in an httpOnly cookie. Recommended: access token in memory (Bearer), refresh token in an httpOnly `SameSite=Strict` cookie, plus a CSRF token on the refresh route. Decide before Module 7, since it shapes the Axios client.
 
-Already resolved, no action needed:
+Already resolved before this plan existed:
 
-- ~~Separate `Patients` / `Doctors` / `Admins` collections~~ → unified into one `User` model with `role` + `patientProfile` / `doctorProfile` subdocuments. This is the correct design; the brief's "models" list is satisfied.
-
----
-
-## 3. Do first (blockers, not features)
-
-- [ ] **Install Git and initialise the repository** `S` — there is no version control on this project at all. `.gitignore` already exists and is correct. One accidental delete currently loses everything.
-  - Install from git-scm.com, then `git init`, `git add .`, first commit.
-  - Confirm `backend/.env` and `.local/` are ignored **before** the first commit — `.env` contains `FILE_ENCRYPTION_KEY`.
-- [ ] **Root `README.md`** `S` — required by the brief, and currently absent. Prerequisites, install, run, seed, test, architecture diagram, module status.
-- [ ] **Back up `FILE_ENCRYPTION_KEY`** `S` — losing it makes every stored medical record permanently unreadable. Keep a copy outside the project folder.
-- [ ] **ESLint + Prettier** `S` — listed in the brief's toolchain, not yet configured. Cheapest now, before the codebase triples in size.
+- ~~Separate `Patients` / `Doctors` / `Admins` collections~~ → unified into one `User` model with `role` + `patientProfile` / `doctorProfile` subdocuments.
 
 ---
 
-## 4. Module 4 — Smart contract, Hardhat, ethers.js `L`
+## 3. Blockers — cleared
 
-Creates the `blockchain/` workspace. Nothing here touches the frontend.
+- [x] **Git installed and repository initialised** — Git 2.55 installed via winget; `git init` done, first commit made. Verified before committing that `backend/.env`, `node_modules/`, `.local/` and the blockchain build output are all ignored, and that no key material appears in the staged diff.
+- [x] **Root `README.md`** — architecture, prerequisites, quick start, security table, API summary, module status.
+- [ ] **Back up `FILE_ENCRYPTION_KEY` and `CUSTODIAL_WALLET_SEED`** `S` — **still outstanding, and it is on you.** Both live only in `backend/.env`, which is git-ignored by design. Losing the first makes every stored record permanently unreadable; losing the second orphans every user's on-chain identity. Copy them somewhere outside the project folder today.
+- [ ] **ESLint + Prettier** `S` — still not configured. Cheapest now, before the frontend triples the codebase.
 
-- [ ] Scaffold `blockchain/` with Hardhat, `hardhat.config.js`, OpenZeppelin contracts
-- [ ] `contracts/TelemedicineRecords.sol`
-  - [ ] `registerPatient` / `registerDoctor` — wallet ↔ role mapping
-  - [ ] `verifyDoctor` — admin-only, mirrors the M2 off-chain verification
-  - [ ] `uploadRecordHash(patient, cid, sha256Hash, recordType)` → emits `RecordUploaded`
-  - [ ] `grantAccess(recordId, doctor, expiresAt)` → emits `AccessGranted`
-  - [ ] `revokeAccess(recordId, doctor)` → emits `AccessRevoked`
-  - [ ] `hasAccess(recordId, doctor)` view — the authorisation oracle for M5/M6
-  - [ ] `getRecordsByPatient(patient)` view
-  - [ ] Access modifiers via OpenZeppelin `AccessControl`; `ReentrancyGuard` where value moves
-  - [ ] Custom errors over `require` strings (gas), events on every state change (audit trail)
-- [ ] `test/TelemedicineRecords.test.js` — role enforcement, grant/revoke lifecycle, expiry, unauthorised-caller reverts, event emission
-- [ ] `scripts/deploy.js` + Hardhat Ignition module
-- [ ] Backend `src/services/blockchainService.js` — ethers.js provider/signer factory, ABI loading, tx submission with retry, receipt confirmation
-- [ ] Backend `src/config/blockchain.js` + env: `RPC_URL`, `CHAIN_ID`, `CONTRACT_ADDRESS`, `DEPLOYER_PRIVATE_KEY`
-- [ ] `models/BlockchainTransaction.js` — tx hash, type, status, gas, block, related record
-- [ ] Wire anchoring into the existing upload flow so `blockchain.status` moves `pending → confirmed`
-- [ ] Backfill script for records already uploaded under M3
+---
 
-**Note:** M3 deliberately stamps every record `blockchain.status: "pending"`, so no data migration is needed — only a backfill run.
+## 4. Module 4 — Smart contract, Hardhat, ethers.js — **COMPLETE**
+
+- [x] `blockchain/` workspace: Hardhat 2.29, OpenZeppelin 5, ethers v6, Solidity 0.8.24
+- [x] `contracts/TelemedicineRecords.sol` — registration, admin verification, `anchorRecord`, `grantAccess` / `grantAccessFor` / `revokeAccess`, `hasAccess` oracle, `logAccess`, `verifyRecordIntegrity`, full view surface
+- [x] `AccessControl` + `Pausable` + `ReentrancyGuard`, custom errors, events on every state change
+- [x] `test/TelemedicineRecords.test.js` — **38 tests passing**
+- [x] `scripts/deploy.js` — writes address + ABI straight into the backend, so a deployment self-wires
+- [x] `backend/src/config/blockchain.js`, `services/blockchainService.js`, `models/BlockchainTransaction.js`
+- [x] Anchoring wired into the upload flow; `blockchain.status` moves `pending → confirmed`
+- [x] `npm run backfill:anchors` for records uploaded before the chain existed
+- [x] `GET /api/v1/health` now reports chain connectivity, block height and record count
+- [x] On-chain integrity check surfaced in `GET /records/:id/verify`
+
+**Two bugs found and fixed during this module** (both worth writing up):
+
+1. **Nonce collision.** One registrar key signs every write; concurrent uploads read the same pending nonce and the second was rejected with *"nonce has already been used"*, silently downgrading records to `failed`. Fixed by serialising submissions behind a queue with an in-process nonce counter. Regression test: *"anchors concurrent uploads without a nonce collision"*.
+2. **Failure logs silently dropped.** The full ethers error embeds the raw signed transaction (thousands of characters) and was written into a field capped at 1000, so the validation error was swallowed by the logger's own catch — failures left no trace at all. Errors are now truncated before logging.
+
+**Not carried over from the original scope:** Hardhat Ignition. `scripts/deploy.js`
+already handles deployment and artifact publication; Ignition would add a second
+way to do the same thing.
 
 ---
 
@@ -220,11 +216,10 @@ Creates the `blockchain/` workspace. Nothing here touches the frontend.
 ## 12. Suggested order
 
 ```
-Git + README + ESLint          (§3 — do this week, it is 1 day total)
+Git + README                   ✔ done
+Module 4  contract + anchoring ✔ done
         ↓
-Module 4  contract + anchoring        ← the differentiator; everything cites it
-        ↓
-Module 5  sharing                     ← unlocks doctor work
+Module 5  sharing                     ← NEXT. unlocks all doctor work
         ↓
 Module 6  doctor workflows  (+6b appointments if in scope)
         ↓
