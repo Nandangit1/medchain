@@ -77,7 +77,16 @@ const env = {
   MONGODB_URI: process.env.MONGODB_URI,
   JWT_SECRET: process.env.JWT_SECRET,
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "1d",
-  CORS_ORIGIN: process.env.CORS_ORIGIN || "http://localhost:3000",
+  /**
+   * Comma-separated list, so the same backend serves medchain.local, localhost
+   * and a LAN address without reconfiguration. Kept as a raw string for logging;
+   * `CORS_ORIGINS` below is the parsed form the CORS middleware uses.
+   */
+  CORS_ORIGIN: process.env.CORS_ORIGIN || "http://medchain.local,http://localhost",
+  CORS_ORIGINS: (process.env.CORS_ORIGIN || "http://medchain.local,http://localhost")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/$/, ""))
+    .filter(Boolean),
   ADMIN_NAME: process.env.ADMIN_NAME,
   ADMIN_EMAIL: process.env.ADMIN_EMAIL,
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,

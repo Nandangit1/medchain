@@ -149,15 +149,41 @@ npm run backfill:anchors
 cd frontend
 npm install
 cp .env.example .env
-npm run dev             # http://localhost:3000
+npm run dev             # http://localhost
 ```
 
-> The dev server is pinned to port **3000** because that is the backend's
-> `CORS_ORIGIN`. Changing one without the other produces an opaque CORS failure
-> on every request.
+The dev server runs on port **80** and proxies `/api` to the Express backend, so
+the whole app is served from a single origin. That is why `VITE_API_URL` is
+relative (`/api/v1`): there are no CORS preflights, the httpOnly refresh cookie
+works without special cases, and the same build runs on any hostname.
 
-Open http://localhost:3000. Sign in as the seeded admin
-(`admin@example.com` / `Admin@12345`) or register a patient.
+Open http://localhost and sign in as the seeded admin
+(`admin@example.com` / `Admin@12345`), or register a patient.
+
+### Optional: use http://medchain.local instead of localhost
+
+To give the app a real hostname, map `medchain.local` to this machine:
+
+```powershell
+# Right-click PowerShell -> Run as Administrator
+powershell -ExecutionPolicy Bypass -File scripts\setup-hostname.ps1
+```
+
+The script backs up the hosts file, adds two loopback entries, and flushes the
+DNS cache. Nothing is sent to the internet — the hosts file is simply consulted
+before DNS. Undo it at any time:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup-hostname.ps1 -Remove
+```
+
+Then open **http://medchain.local**.
+
+> Type the full URL including `http://`. Some browsers treat a bare hostname
+> with no `.com` as a search query and will show search results instead.
+
+`localhost` keeps working either way — both hostnames are in the Vite
+`allowedHosts` list and the backend `CORS_ORIGIN`.
 
 ## 6. Verify the whole stack
 
@@ -176,7 +202,7 @@ Five terminals, in this order:
 | 2 | `blockchain` | `npx hardhat node` | 8545 |
 | 3 | `blockchain` | `npx hardhat run scripts/deploy.js --network localhost` | — |
 | 4 | `backend` | `npm run dev` | 5000 |
-| 5 | `frontend` | `npm run dev` | 3000 |
+| 5 | `frontend` | `npm run dev` | 80 |
 
 Terminal 3 exits after deploying.
 
@@ -188,7 +214,11 @@ Terminal 3 exits after deploying.
 | `FILE_ENCRYPTION_KEY must be … 64 hexadecimal characters` | wrong key length | Regenerate with the command in step 3 |
 | `EADDRINUSE :::5000` | API already running | Stop the other instance, or change `PORT` |
 | `MongooseServerSelectionError` | MongoDB not running | Start terminal 1 |
-| CORS error in the browser console | port mismatch | Frontend must be on `CORS_ORIGIN` (3000) |
+| CORS error in the browser console | frontend origin not allow-listed | Add it to `CORS_ORIGIN` (comma-separated) |
+| `EADDRINUSE :::80` | IIS, Skype or another server holds port 80 | Stop it, or change `server.port` in `vite.config.js` |
+| `medchain.local` shows search results | browser treated it as a query | Type the full `http://medchain.local` |
+| `medchain.local` does not resolve | hosts entry missing | Run `scripts\setup-hostname.ps1` as Administrator |
+| `Blocked request. This host is not allowed` | hostname not in `allowedHosts` | Add it to `server.allowedHosts` in `vite.config.js` |
 | `Contract artifact not found` | never deployed | Run the deploy script (step 4) |
 | `nonce has already been used` | stale nonce after a chain restart | Restart the backend; it re-reads the nonce |
 | Records stuck at `pending` | chain disabled or unreachable | Enable it, then `npm run backfill:anchors` |

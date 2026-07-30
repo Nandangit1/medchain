@@ -68,7 +68,7 @@ const AuthLayout = ({ title, subtitle, children, footer }) => (
         className="mb-0"
         style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.55)", position: "relative", zIndex: 1 }}
       >
-        Blockchain-Based Secure Telemedicine System
+        © {new Date().getFullYear()} MedChain · Secure Telemedicine Platform
       </p>
     </aside>
 

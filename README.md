@@ -161,11 +161,21 @@ until `npm run backfill:anchors` is run.
 cd frontend
 npm install
 cp .env.example .env
-npm run dev            # http://localhost:3000
+npm run dev            # http://localhost
 ```
 
-> The dev server is pinned to port 3000 because that is the backend's
-> `CORS_ORIGIN`. Change one and you must change the other.
+The dev server runs on port 80 and proxies `/api` to the backend, so the app is
+served from a single origin — no CORS, and `VITE_API_URL` stays relative.
+
+**Optional — serve it as `medchain.local`:**
+
+```powershell
+# Administrator PowerShell, once
+powershell -ExecutionPolicy Bypass -File scripts\setup-hostname.ps1
+```
+
+Then open **http://medchain.local**. `localhost` continues to work.
+Run the script with `-Remove` to undo.
 
 ### 5. Run the tests
 

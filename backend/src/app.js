@@ -25,9 +25,26 @@ const app = express();
 app.set("trust proxy", 1);
 
 app.use(helmet());
+
+/**
+ * The frontend is normally proxied through the dev server, which makes requests
+ * same-origin and bypasses CORS entirely. This allow-list covers the cases where
+ * the browser does talk to the API directly — a separate deployment, or a tool
+ * like Postman.
+ *
+ * A request with no Origin header (server-to-server, curl, the proxy itself) is
+ * allowed: CORS is a browser protection, and refusing those would break the
+ * proxy without adding security.
+ */
 app.use(
   cors({
-    origin: env.CORS_ORIGIN,
+    origin(origin, callback) {
+      if (!origin || env.CORS_ORIGINS.includes(origin.replace(/\/$/, ""))) {
+        return callback(null, true);
+      }
+
+      return callback(new Error(`Origin ${origin} is not permitted by CORS policy.`));
+    },
     credentials: true,
   })
 );

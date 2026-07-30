@@ -255,12 +255,70 @@ const Home = () => (
       </div>
     </section>
 
-    <footer
-      className="py-4 text-center text-muted"
-      style={{ borderTop: "1px solid var(--bts-border)", fontSize: "0.8rem" }}
-    >
-      <div className="container">
-        MedChain — Blockchain-Based Secure Telemedicine System · BE Final Year Project
+    <footer style={{ borderTop: "1px solid var(--bts-border)" }}>
+      <div className="container py-5">
+        <div className="row g-4">
+          <div className="col-lg-4">
+            <div className="d-flex align-items-center gap-2 fw-bold mb-2">
+              <span className="bts-brand-mark">
+                <FiShield />
+              </span>
+              <span style={{ letterSpacing: "-0.02em" }}>MedChain</span>
+            </div>
+            <p className="text-muted mb-0" style={{ fontSize: "0.82rem", maxWidth: 300 }}>
+              Secure telemedicine with encrypted storage, distributed hosting and
+              blockchain-verified integrity.
+            </p>
+          </div>
+
+          <div className="col-6 col-lg-2">
+            <div className="fw-semibold mb-2" style={{ fontSize: "0.82rem" }}>
+              Platform
+            </div>
+            <ul className="list-unstyled mb-0" style={{ fontSize: "0.82rem" }}>
+              <li className="mb-1">
+                <Link to="/register" className="text-muted">
+                  Create account
+                </Link>
+              </li>
+              <li className="mb-1">
+                <Link to="/login" className="text-muted">
+                  Sign in
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          <div className="col-6 col-lg-3">
+            <div className="fw-semibold mb-2" style={{ fontSize: "0.82rem" }}>
+              Security
+            </div>
+            <ul className="list-unstyled text-muted mb-0" style={{ fontSize: "0.82rem" }}>
+              <li className="mb-1">AES-256-GCM encryption</li>
+              <li className="mb-1">IPFS distributed storage</li>
+              <li className="mb-1">Ethereum integrity anchoring</li>
+            </ul>
+          </div>
+
+          <div className="col-lg-3">
+            <div className="fw-semibold mb-2" style={{ fontSize: "0.82rem" }}>
+              Your data
+            </div>
+            <ul className="list-unstyled text-muted mb-0" style={{ fontSize: "0.82rem" }}>
+              <li className="mb-1">Patient-controlled access</li>
+              <li className="mb-1">Immediate revocation</li>
+              <li className="mb-1">Full audit trail</li>
+            </ul>
+          </div>
+        </div>
+
+        <div
+          className="d-flex flex-wrap justify-content-between gap-2 pt-4 mt-4 text-muted"
+          style={{ borderTop: "1px solid var(--bts-border)", fontSize: "0.78rem" }}
+        >
+          <span>© {new Date().getFullYear()} MedChain. All rights reserved.</span>
+          <span>Secure Telemedicine Platform</span>
+        </div>
       </div>
     </footer>
   </div>
