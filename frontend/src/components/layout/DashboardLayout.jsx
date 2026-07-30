@@ -17,6 +17,7 @@ import {
   FiUsers,
 } from "react-icons/fi";
 
+import NotificationBell from "../NotificationBell";
 import { ROLES } from "../../context/AuthContext";
 import useAuth from "../../hooks/useAuth";
 
@@ -53,6 +54,7 @@ const NAV_BY_ROLE = {
     { to: "/admin/doctors", label: "Verify doctors", icon: <FiUserCheck /> },
     { to: "/admin/users", label: "Manage users", icon: <FiUsers /> },
     { section: "Audit" },
+    { to: "/admin/audit", label: "Audit log", icon: <FiFileText /> },
     { to: "/admin/blockchain", label: "Blockchain", icon: <FiShield /> },
     { section: "Account" },
     { to: "/profile", label: "Profile", icon: <FiUser /> },
@@ -84,8 +86,9 @@ const DashboardLayout = () => {
 
   const items = NAV_BY_ROLE[role] || [];
 
-  const handleLogout = () => {
-    logout();
+  // Awaited so the server revokes the refresh cookie before we navigate away.
+  const handleLogout = async () => {
+    await logout();
     navigate("/login", { replace: true });
   };
 
@@ -162,6 +165,8 @@ const DashboardLayout = () => {
                 Awaiting verification
               </Badge>
             )}
+
+            <NotificationBell />
 
             <button
               type="button"

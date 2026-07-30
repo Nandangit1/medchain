@@ -57,6 +57,7 @@ exports.uploadPrescription = catchAsync(async (req, res) => {
     patientId: req.params.patientId,
     file: req.file,
     payload: req.body,
+    req,
   });
 
   sendSuccess(res, 201, "Prescription uploaded and anchored successfully.", { record });

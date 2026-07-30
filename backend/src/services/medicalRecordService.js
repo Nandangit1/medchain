@@ -5,9 +5,13 @@ const userRepository = require("../repositories/userRepository");
 const AppError = require("../utils/AppError");
 const { buildPagination, buildPaginationMeta } = require("../utils/pagination");
 const { hashesMatch, sha256Hex } = require("../utils/hash");
+const { AUDIT_ACTIONS } = require("../constants/audit");
+const { NOTIFICATION_TYPES } = require("../models/Notification");
 const accessControlService = require("./accessControlService");
+const auditService = require("./auditService");
 const blockchainService = require("./blockchainService");
 const encryptionService = require("./encryptionService");
+const notificationService = require("./notificationService");
 const ipfsService = require("./ipfs");
 
 /**
@@ -252,7 +256,7 @@ const createRecord = async ({ actor, patient, file, payload }) => {
 };
 
 /** Patient uploading one of their own documents. */
-const uploadRecord = async ({ actor, file, payload }) => {
+const uploadRecord = async ({ actor, file, payload, req }) => {
   const patient = await userRepository.findActivePatientById(actor._id);
 
   if (!patient) {
@@ -260,6 +264,16 @@ const uploadRecord = async ({ actor, file, payload }) => {
   }
 
   const record = await createRecord({ actor, patient, file, payload });
+
+  await auditService.record({
+    action: AUDIT_ACTIONS.RECORD_UPLOADED,
+    actor,
+    targetRecord: record,
+    description: `Uploaded "${record.title}"`,
+    metadata: { cid: record.storage.cid, anchor: record.blockchain?.status },
+    req,
+  });
+
   return record.toClientObject();
 };
 
@@ -270,7 +284,7 @@ const uploadRecord = async ({ actor, file, payload }) => {
  * patient who has already granted them access to something. Without that rule
  * any verified doctor could push documents into any patient's record.
  */
-const uploadRecordForPatient = async ({ actor, patientId, file, payload }) => {
+const uploadRecordForPatient = async ({ actor, patientId, file, payload, req }) => {
   if (actor.doctorProfile?.verificationStatus !== DOCTOR_VERIFICATION_STATUS.VERIFIED) {
     throw new AppError("Your account must be verified by an administrator first.", 403);
   }
@@ -301,6 +315,23 @@ const uploadRecordForPatient = async ({ actor, patientId, file, payload }) => {
    * they could not open their own prescription.
    */
   await accessControlService.grantSystemAccess({ record, patient, doctor: actor });
+
+  await auditService.record({
+    action: AUDIT_ACTIONS.PRESCRIPTION_UPLOADED,
+    actor,
+    targetUser: patient,
+    targetRecord: record,
+    description: `Uploaded "${record.title}" into ${patient.name}'s chart`,
+    req,
+  });
+
+  await notificationService.push({
+    user: patient._id,
+    type: NOTIFICATION_TYPES.PRESCRIPTION_ADDED,
+    title: "A doctor added a document to your records",
+    message: `${actor.name} uploaded "${record.title}".`,
+    link: `/patient/records/${record._id}`,
+  });
 
   return record.toClientObject();
 };
@@ -338,7 +369,7 @@ const getRecordById = async ({ actor, recordId }) => {
  * silently returned the wrong object, and it is the same comparison the smart
  * contract will perform against the on-chain hash from Module 4 onward.
  */
-const downloadRecord = async ({ actor, recordId }) => {
+const downloadRecord = async ({ actor, recordId, req }) => {
   const record = await medicalRecordRepository.findByIdWithSecrets(recordId);
 
   if (!record) {
@@ -364,7 +395,24 @@ const downloadRecord = async ({ actor, recordId }) => {
    */
   if (actor.role === ROLES.DOCTOR) {
     blockchainService.logAccessOnChain({ record, viewer: actor }).catch(() => null);
+
+    await notificationService.push({
+      user: record.patient?._id ?? record.patient,
+      type: NOTIFICATION_TYPES.RECORD_VIEWED,
+      title: "A doctor opened one of your records",
+      message: `${actor.name} viewed "${record.title}".`,
+      link: `/patient/records/${record._id}`,
+    });
   }
+
+  await auditService.record({
+    action: AUDIT_ACTIONS.RECORD_DOWNLOADED,
+    actor,
+    targetRecord: record,
+    targetUser: record.patient?._id ?? record.patient,
+    description: `Decrypted and downloaded "${record.title}"`,
+    req,
+  });
 
   return { buffer: plaintext, record };
 };

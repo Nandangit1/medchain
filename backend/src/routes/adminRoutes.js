@@ -5,9 +5,11 @@ const { ROLES } = require("../constants/roles");
 const { authorize, protect } = require("../middlewares/authMiddleware");
 const validateRequest = require("../middlewares/validateRequest");
 const {
+  auditListRules,
   doctorListRules,
   doctorStatusRules,
   rejectDoctorRules,
+  transactionListRules,
   userIdRules,
   userListRules,
   userStatusRules,
@@ -17,6 +19,18 @@ const router = express.Router();
 
 router.use(protect);
 router.use(authorize(ROLES.ADMIN));
+
+router.get("/stats", adminController.getPlatformStats);
+
+router.get("/audit-logs", auditListRules, validateRequest, adminController.getAuditLogs);
+router.get("/audit-summary", adminController.getAuditSummary);
+
+router.get(
+  "/blockchain/transactions",
+  transactionListRules,
+  validateRequest,
+  adminController.getBlockchainTransactions
+);
 
 router.get("/users", userListRules, validateRequest, adminController.getUsers);
 router.get("/users/:userId", userIdRules, validateRequest, adminController.getUserById);

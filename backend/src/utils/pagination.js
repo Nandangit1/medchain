@@ -27,7 +27,39 @@ const buildPaginationMeta = (totalItems, pagination) => ({
   hasPreviousPage: pagination.page > 1,
 });
 
+/**
+ * Translates a `?sort=` parameter into a Mongoose sort object.
+ *
+ * The caller supplies an ALLOW-LIST of sortable fields. Passing user input
+ * straight into `.sort()` would let a client sort by any indexed field —
+ * including ones deliberately hidden from the projection — and order results
+ * by data they were never meant to see. An unrecognised field falls back to
+ * the default rather than erroring, because a bad sort key is a cosmetic
+ * problem, not a reason to fail the request.
+ *
+ * Syntax: `?sort=createdAt` ascending, `?sort=-createdAt` descending.
+ *
+ * @param {string|undefined} sortParam
+ * @param {string[]} allowedFields
+ * @param {object} fallback
+ */
+const buildSort = (sortParam, allowedFields, fallback = { createdAt: -1 }) => {
+  if (!sortParam || typeof sortParam !== "string") {
+    return fallback;
+  }
+
+  const descending = sortParam.startsWith("-");
+  const field = descending ? sortParam.slice(1) : sortParam;
+
+  if (!allowedFields.includes(field)) {
+    return fallback;
+  }
+
+  return { [field]: descending ? -1 : 1 };
+};
+
 module.exports = {
   buildPagination,
   buildPaginationMeta,
+  buildSort,
 };

@@ -1,45 +1,63 @@
-import { FiActivity, FiDatabase, FiHardDrive, FiLink } from "react-icons/fi";
+import { useState } from "react";
+import { FiActivity, FiHardDrive, FiLink, FiSearch } from "react-icons/fi";
 
 import {
+  EmptyState,
   ErrorState,
   PageHeader,
-  SkeletonCards,
+  SkeletonRows,
   StatCard,
+  StatusChip,
   formatDate,
+  truncateHash,
 } from "../../components/common";
 import useApi from "../../hooks/useApi";
-import { healthApi } from "../../services";
+import { adminApi, healthApi } from "../../services";
 
-/**
- * Operational view of the platform's external dependencies.
- *
- * A per-transaction explorer needs a dedicated admin endpoint over the
- * BlockchainTransaction collection, which is not built yet — this page reports
- * live connectivity rather than pretending to show data it cannot fetch.
- */
+const TX_TYPE_LABELS = {
+  register_patient: "Register patient",
+  register_doctor: "Register doctor",
+  verify_doctor: "Verify doctor",
+  anchor_record: "Anchor record",
+  deactivate_record: "Deactivate record",
+  grant_access: "Grant access",
+  revoke_access: "Revoke access",
+  log_access: "Log access",
+};
+
 const AdminBlockchain = () => {
-  const { data, loading, error, refetch } = useApi(() => healthApi.get(), []);
+  const [filters, setFilters] = useState({ type: "", status: "", search: "", page: 1 });
 
-  if (loading) {
-    return (
-      <>
-        <PageHeader title="Blockchain" />
-        <SkeletonCards count={3} />
-      </>
-    );
-  }
+  const health = useApi(() => healthApi.get(), []);
 
-  if (error) return <ErrorState message={error} onRetry={refetch} />;
+  const txs = useApi(
+    () =>
+      adminApi.transactions({
+        page: filters.page,
+        limit: 15,
+        sort: "-createdAt",
+        ...(filters.type && { type: filters.type }),
+        ...(filters.status && { status: filters.status }),
+        ...(filters.search.length >= 2 && { search: filters.search }),
+      }),
+    [filters]
+  );
 
-  const { blockchain, ipfs, database } = data;
+  const chain = health.data?.blockchain;
 
   return (
     <>
       <PageHeader
-        title="Blockchain &amp; storage"
-        subtitle="Live status of the platform's external dependencies"
+        title="Blockchain"
+        subtitle="Every transaction the platform has submitted"
         actions={
-          <button className="btn btn-sm btn-outline-secondary" onClick={refetch}>
+          <button
+            className="btn btn-sm btn-outline-secondary"
+            onClick={() => {
+              health.refetch();
+              txs.refetch();
+            }}
+          >
             Refresh
           </button>
         }
@@ -49,101 +67,183 @@ const AdminBlockchain = () => {
         <div className="col-md-4">
           <StatCard
             label="Chain status"
-            value={blockchain.enabled ? (blockchain.connected ? "Online" : "Offline") : "Disabled"}
+            value={chain ? (chain.enabled ? (chain.connected ? "Online" : "Offline") : "Disabled") : "—"}
             icon={<FiLink />}
-            tone={blockchain.connected ? "success" : blockchain.enabled ? "danger" : "warning"}
-            hint={blockchain.chainId ? `Chain ID ${blockchain.chainId}` : undefined}
+            tone={chain?.connected ? "success" : chain?.enabled ? "danger" : "warning"}
+            hint={chain?.chainId ? `Chain ID ${chain.chainId}` : undefined}
           />
         </div>
         <div className="col-md-4">
           <StatCard
             label="Records anchored"
-            value={blockchain.recordCount ?? "—"}
+            value={chain?.recordCount ?? "—"}
             icon={<FiActivity />}
             tone="teal"
-            hint={blockchain.blockNumber ? `Block ${blockchain.blockNumber}` : undefined}
+            hint={chain?.blockNumber ? `Block ${chain.blockNumber}` : undefined}
           />
         </div>
         <div className="col-md-4">
           <StatCard
             label="Storage driver"
-            value={ipfs?.driver ?? "—"}
+            value={health.data?.ipfs?.driver ?? "—"}
             icon={<FiHardDrive />}
             tone="info"
-            hint={ipfs?.driver === "local" ? "Development mode" : "Pinned to IPFS"}
+            hint={health.data?.ipfs?.driver === "local" ? "Development mode" : "Pinned to IPFS"}
           />
         </div>
       </div>
 
-      <div className="row g-3">
-        <div className="col-lg-6">
-          <div className="bts-card p-4 h-100">
-            <h6 className="fw-bold mb-3">Contract</h6>
-
-            {blockchain.enabled ? (
-              <dl className="row small mb-0">
-                <dt className="col-4 text-muted fw-normal">Address</dt>
-                <dd className="col-8">
-                  <code className="bts-mono text-break">{blockchain.contractAddress ?? "—"}</code>
-                </dd>
-
-                <dt className="col-4 text-muted fw-normal">Chain ID</dt>
-                <dd className="col-8">{blockchain.chainId ?? "—"}</dd>
-
-                <dt className="col-4 text-muted fw-normal">Block height</dt>
-                <dd className="col-8">{blockchain.blockNumber ?? "—"}</dd>
-
-                <dt className="col-4 text-muted fw-normal">Anchored records</dt>
-                <dd className="col-8">{blockchain.recordCount ?? "—"}</dd>
-              </dl>
-            ) : (
-              <p className="text-muted small mb-0">
-                Anchoring is disabled. Records are still encrypted and stored, and stay at status
-                &quot;pending&quot; until a chain is configured and the backfill script is run.
-              </p>
-            )}
-
-            {blockchain.enabled && !blockchain.connected && (
-              <div className="alert alert-danger small mt-3 mb-0">
-                Cannot reach the node: {blockchain.reason}
-              </div>
-            )}
-          </div>
+      {chain?.enabled && !chain?.connected && (
+        <div className="alert alert-danger small">
+          Cannot reach the node: {chain.reason}. Records are still stored and encrypted; anchoring
+          resumes once the node is back, and <code>npm run backfill:anchors</code> catches up.
         </div>
+      )}
 
-        <div className="col-lg-6">
-          <div className="bts-card p-4 h-100">
-            <h6 className="fw-bold mb-3">
-              <FiDatabase className="me-1" />
-              Services
-            </h6>
+      {chain?.contractAddress && (
+        <div className="bts-card p-3 mb-3">
+          <div className="text-muted small">Contract address</div>
+          <code className="bts-mono text-break">{chain.contractAddress}</code>
+        </div>
+      )}
 
-            {[
-              ["Database", database === "connected", database],
-              ["IPFS", Boolean(ipfs?.driver), ipfs?.driver ?? "unavailable"],
-              [
-                "Blockchain",
-                blockchain.connected,
-                blockchain.enabled ? (blockchain.connected ? "connected" : "unreachable") : "disabled",
-              ],
-            ].map(([label, healthy, detail]) => (
-              <div
-                key={label}
-                className="d-flex justify-content-between align-items-center py-2 border-bottom"
-                style={{ borderColor: "var(--bts-border)" }}
-              >
-                <span className="small fw-semibold">{label}</span>
-                <span className={`bts-chip ${healthy ? "bts-chip-success" : "bts-chip-danger"}`}>
-                  {detail}
-                </span>
-              </div>
-            ))}
-
-            <div className="text-muted small mt-3">
-              Last checked {formatDate(data.timestamp, true)}
+      <div className="bts-card p-3 mb-3">
+        <div className="row g-2">
+          <div className="col-md-6">
+            <div className="input-group input-group-sm">
+              <span className="input-group-text bg-transparent">
+                <FiSearch />
+              </span>
+              <input
+                className="form-control"
+                placeholder="Search by transaction hash..."
+                value={filters.search}
+                onChange={(event) =>
+                  setFilters((f) => ({ ...f, search: event.target.value, page: 1 }))
+                }
+              />
             </div>
           </div>
+          <div className="col-md-3">
+            <select
+              className="form-select form-select-sm"
+              value={filters.type}
+              onChange={(event) => setFilters((f) => ({ ...f, type: event.target.value, page: 1 }))}
+            >
+              <option value="">All types</option>
+              {Object.entries(TX_TYPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="col-md-3">
+            <select
+              className="form-select form-select-sm"
+              value={filters.status}
+              onChange={(event) =>
+                setFilters((f) => ({ ...f, status: event.target.value, page: 1 }))
+              }
+            >
+              <option value="">All statuses</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="pending">Pending</option>
+              <option value="failed">Failed</option>
+            </select>
+          </div>
         </div>
+      </div>
+
+      <div className="bts-card p-3">
+        {txs.loading ? (
+          <SkeletonRows rows={8} />
+        ) : txs.error ? (
+          <ErrorState message={txs.error} onRetry={txs.refetch} />
+        ) : txs.data.transactions.length === 0 ? (
+          <EmptyState
+            icon={<FiActivity />}
+            title="No transactions recorded"
+            description={
+              chain?.enabled
+                ? "Nothing matches those filters."
+                : "Anchoring is disabled, so no transactions have been submitted."
+            }
+          />
+        ) : (
+          <>
+            <div className="table-responsive">
+              <table className="table table-hover align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Tx hash</th>
+                    <th>Block</th>
+                    <th>Gas</th>
+                    <th>Related</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {txs.data.transactions.map((tx) => (
+                    <tr key={tx._id}>
+                      <td className="small text-muted" style={{ whiteSpace: "nowrap" }}>
+                        {formatDate(tx.createdAt, true)}
+                      </td>
+                      <td className="small">{TX_TYPE_LABELS[tx.type] ?? tx.type}</td>
+                      <td>
+                        <StatusChip status={tx.status} />
+                      </td>
+                      <td className="bts-mono" style={{ fontSize: "0.72rem" }}>
+                        {tx.txHash ? truncateHash(tx.txHash, 12, 8) : "—"}
+                        {tx.error && (
+                          <div
+                            className="text-danger text-truncate"
+                            style={{ fontSize: "0.68rem", maxWidth: 220 }}
+                            title={tx.error}
+                          >
+                            {tx.error}
+                          </div>
+                        )}
+                      </td>
+                      <td className="small text-muted">{tx.blockNumber ?? "—"}</td>
+                      <td className="small text-muted">{tx.gasUsed ?? "—"}</td>
+                      <td className="small text-muted">
+                        {tx.relatedRecord?.title ?? tx.relatedUser?.name ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {txs.data.pagination.totalPages > 1 && (
+              <div className="d-flex justify-content-between align-items-center mt-3">
+                <small className="text-muted">
+                  Page {txs.data.pagination.currentPage} of {txs.data.pagination.totalPages} ·{" "}
+                  {txs.data.pagination.totalItems} transactions
+                </small>
+                <div className="btn-group btn-group-sm">
+                  <button
+                    className="btn btn-outline-secondary"
+                    disabled={!txs.data.pagination.hasPreviousPage}
+                    onClick={() => setFilters((f) => ({ ...f, page: f.page - 1 }))}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    className="btn btn-outline-secondary"
+                    disabled={!txs.data.pagination.hasNextPage}
+                    onClick={() => setFilters((f) => ({ ...f, page: f.page + 1 }))}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </>
   );

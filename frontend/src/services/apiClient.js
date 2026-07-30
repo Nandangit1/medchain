@@ -3,10 +3,18 @@ import axios from "axios";
 /**
  * Single Axios instance for the whole application.
  *
- * The access token is held in memory and mirrored to localStorage so a page
- * refresh does not log the user out. localStorage is readable by any script on
- * the origin, which is the accepted trade-off for a Bearer-token design; the
- * httpOnly-cookie alternative is recorded as an open decision in PROJECT_TODO.
+ * TOKEN MODEL (matches the backend's tokenService):
+ *
+ *   Access token   short-lived JWT, sent as a Bearer header. Mirrored to
+ *                  localStorage so a page refresh does not sign the user out.
+ *   Refresh token  httpOnly, SameSite=Strict cookie. JavaScript cannot read
+ *                  it, so it is never touched by this file — the browser
+ *                  attaches it automatically to /auth/refresh because
+ *                  withCredentials is set.
+ *
+ * localStorage is readable by any script on the origin, which is why the
+ * long-lived credential is deliberately NOT kept there. An XSS payload can
+ * steal at most a token that expires shortly.
  */
 const TOKEN_KEY = "bts.token";
 
@@ -26,6 +34,12 @@ export const setStoredToken = (token) => {
   }
 };
 
+/** Lets AuthContext react to a session that could not be recovered. */
+let onSessionLost = null;
+export const setSessionLostHandler = (handler) => {
+  onSessionLost = handler;
+};
+
 apiClient.interceptors.request.use((config) => {
   const token = getStoredToken();
 
@@ -37,36 +51,90 @@ apiClient.interceptors.request.use((config) => {
 });
 
 /**
- * Normalises every failure into a plain Error carrying the backend's message,
- * so components never have to dig through the Axios error shape.
+ * SINGLE-FLIGHT REFRESH.
  *
- * A 401 clears the session and bounces to /login — but only if the user was
- * actually logged in, otherwise a failed login attempt would trigger a
- * redirect loop on the login page itself.
+ * When a token expires, every in-flight request fails with 401 at roughly the
+ * same moment. Refreshing once per failure would fire N parallel calls to
+ * /auth/refresh — and because the backend ROTATES the refresh token and treats
+ * reuse as a compromise, the second call would present an already-spent token
+ * and get every session revoked. That would turn an ordinary expiry into a
+ * forced sign-out.
+ *
+ * So the first 401 starts a refresh and the rest await that same promise.
  */
+let refreshPromise = null;
+
+const refreshSession = () => {
+  if (!refreshPromise) {
+    refreshPromise = apiClient
+      .post("/auth/refresh", null, { skipAuthRefresh: true })
+      .then((response) => {
+        const token = response.data?.data?.token;
+        if (!token) throw new Error("Refresh returned no token.");
+        setStoredToken(token);
+        return token;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+};
+
+const normalizeError = (error) => {
+  const message =
+    error.response?.data?.message ||
+    (error.code === "ECONNABORTED"
+      ? "The server took too long to respond."
+      : "Unable to reach the server. Is the API running?");
+
+  const normalized = new Error(message);
+  normalized.status = error.response?.status;
+  normalized.details = error.response?.data;
+  return normalized;
+};
+
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
-    const status = error.response?.status;
-    const message =
-      error.response?.data?.message ||
-      (error.code === "ECONNABORTED"
-        ? "The server took too long to respond."
-        : "Unable to reach the server. Is the API running?");
+  async (error) => {
+    const { config, response } = error;
+    const status = response?.status;
 
-    if (status === 401 && getStoredToken()) {
-      setStoredToken(null);
+    /**
+     * Retry exactly once, and never for the refresh call itself or for
+     * requests made while signed out — otherwise a failed login would try to
+     * refresh a session that never existed.
+     */
+    const canRetry =
+      status === 401 && config && !config.skipAuthRefresh && !config.__retried && getStoredToken();
 
-      if (!window.location.pathname.startsWith("/login")) {
-        window.location.assign("/login?expired=1");
+    if (canRetry) {
+      config.__retried = true;
+
+      try {
+        const token = await refreshSession();
+        config.headers.Authorization = `Bearer ${token}`;
+        return apiClient(config);
+      } catch {
+        setStoredToken(null);
+        onSessionLost?.();
+
+        if (!window.location.pathname.startsWith("/login")) {
+          window.location.assign("/login?expired=1");
+        }
+
+        return Promise.reject(normalizeError(error));
       }
     }
 
-    const normalized = new Error(message);
-    normalized.status = status;
-    normalized.details = error.response?.data;
+    // A 401 with no recoverable session: clear and bounce.
+    if (status === 401 && getStoredToken() && config?.skipAuthRefresh) {
+      setStoredToken(null);
+      onSessionLost?.();
+    }
 
-    return Promise.reject(normalized);
+    return Promise.reject(normalizeError(error));
   }
 );
 

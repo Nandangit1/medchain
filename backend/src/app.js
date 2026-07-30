@@ -1,4 +1,5 @@
 const compression = require("compression");
+const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const express = require("express");
 const mongoSanitize = require("express-mongo-sanitize");
@@ -15,6 +16,7 @@ const authRoutes = require("./routes/authRoutes");
 const doctorRoutes = require("./routes/doctorRoutes");
 const healthRoutes = require("./routes/healthRoutes");
 const medicalRecordRoutes = require("./routes/medicalRecordRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 const patientRoutes = require("./routes/patientRoutes");
 const globalErrorHandler = require("./middlewares/errorMiddleware");
 
@@ -50,6 +52,8 @@ app.use(
 
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+// Required for the httpOnly refresh-token cookie.
+app.use(cookieParser());
 app.use(mongoSanitize());
 app.use(hpp());
 
@@ -65,6 +69,7 @@ app.get("/", (_req, res) => {
       patients: "/api/v1/patients",
       doctors: "/api/v1/doctors",
       appointments: "/api/v1/appointments",
+      notifications: "/api/v1/notifications",
     },
   });
 });
@@ -76,6 +81,7 @@ app.use("/api/v1/records", medicalRecordRoutes);
 app.use("/api/v1/patients", patientRoutes);
 app.use("/api/v1/doctors", doctorRoutes);
 app.use("/api/v1/appointments", appointmentRoutes);
+app.use("/api/v1/notifications", notificationRoutes);
 
 app.all("*", (req, _res, next) => {
   next(new AppError(`Route ${req.originalUrl} was not found.`, 404));

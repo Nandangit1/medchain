@@ -9,8 +9,10 @@ import ProtectedRoute, { homeForRole } from "./routes/ProtectedRoute";
 
 // Public
 import Home from "./pages/Home";
+import ForgotPassword from "./pages/auth/ForgotPassword";
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
+import ResetPassword from "./pages/auth/ResetPassword";
 import NotFound from "./pages/NotFound";
 
 /**
@@ -35,6 +37,7 @@ const AdminDashboard = lazy(() => import("./pages/admin/Dashboard"));
 const AdminDoctors = lazy(() => import("./pages/admin/Doctors"));
 const AdminUsers = lazy(() => import("./pages/admin/Users"));
 const AdminBlockchain = lazy(() => import("./pages/admin/Blockchain"));
+const AdminAuditLog = lazy(() => import("./pages/admin/AuditLog"));
 
 const Profile = lazy(() => import("./pages/Profile"));
 
@@ -54,6 +57,8 @@ const App = () => (
       <Route path="/" element={<RedirectHome />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       {/* Patient */}
       <Route
@@ -99,6 +104,7 @@ const App = () => (
         <Route path="/admin/doctors" element={<AdminDoctors />} />
         <Route path="/admin/users" element={<AdminUsers />} />
         <Route path="/admin/blockchain" element={<AdminBlockchain />} />
+        <Route path="/admin/audit" element={<AdminAuditLog />} />
       </Route>
 
       {/* Any signed-in role */}

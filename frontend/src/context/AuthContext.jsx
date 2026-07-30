@@ -1,7 +1,7 @@
 import { createContext, useCallback, useEffect, useMemo, useState } from "react";
 
 import { authApi } from "../services";
-import { getStoredToken, setStoredToken } from "../services/apiClient";
+import { getStoredToken, setSessionLostHandler, setStoredToken } from "../services/apiClient";
 
 export const AuthContext = createContext(null);
 
@@ -60,9 +60,26 @@ export const AuthProvider = ({ children }) => {
     return data.user;
   }, []);
 
-  const logout = useCallback(() => {
+  /**
+   * Tells the server to revoke the refresh token before clearing local state.
+   * Without this the httpOnly cookie would stay valid and a later /refresh
+   * could resurrect the session.
+   */
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // Signing out locally must succeed even if the server is unreachable.
+    }
+
     setStoredToken(null);
     setUser(null);
+  }, []);
+
+  // Lets the Axios layer drop the user when a refresh cannot be recovered.
+  useEffect(() => {
+    setSessionLostHandler(() => setUser(null));
+    return () => setSessionLostHandler(null);
   }, []);
 
   const refreshUser = useCallback(async () => {

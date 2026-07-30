@@ -11,6 +11,7 @@ exports.grantAccess = catchAsync(async (req, res) => {
     doctorId: req.body.doctorId,
     expiresAt: req.body.expiresAt,
     note: req.body.note,
+    req,
   });
 
   sendSuccess(res, 201, "Access granted successfully.", { permission });
@@ -21,6 +22,7 @@ exports.revokeAccess = catchAsync(async (req, res) => {
     actor: req.user,
     recordId: req.params.recordId,
     doctorId: req.params.doctorId,
+    req,
   });
 
   sendSuccess(res, 200, "Access revoked successfully.", { permission });

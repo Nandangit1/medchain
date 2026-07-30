@@ -84,6 +84,21 @@ exports.updateMeRules = [
   body("doctorProfile").optional().isObject().withMessage("Doctor profile must be an object."),
 ];
 
+exports.forgotPasswordRules = [
+  body("email").trim().isEmail().withMessage("Please provide a valid email address.").normalizeEmail(),
+];
+
+exports.resetPasswordRules = [
+  body("token")
+    .isString()
+    .isLength({ min: 32, max: 128 })
+    .withMessage("A valid reset token is required."),
+  passwordRule("newPassword"),
+  body("newPasswordConfirm")
+    .custom((value, { req }) => value === req.body.newPassword)
+    .withMessage("Password confirmation does not match."),
+];
+
 exports.changePasswordRules = [
   body("currentPassword").notEmpty().withMessage("Current password is required."),
   passwordRule("newPassword"),

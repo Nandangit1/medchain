@@ -12,9 +12,21 @@ import apiClient, { unwrap } from "./apiClient";
 export const authApi = {
   register: (payload) => apiClient.post("/auth/register", payload).then(unwrap),
   login: (payload) => apiClient.post("/auth/login", payload).then(unwrap),
+  logout: () => apiClient.post("/auth/logout").then(unwrap),
   me: () => apiClient.get("/auth/me").then(unwrap),
   updateMe: (payload) => apiClient.patch("/auth/me", payload).then(unwrap),
   changePassword: (payload) => apiClient.patch("/auth/change-password", payload).then(unwrap),
+  forgotPassword: (email) => apiClient.post("/auth/forgot-password", { email }).then(unwrap),
+  resetPassword: (payload) => apiClient.post("/auth/reset-password", payload).then(unwrap),
+};
+
+// --- Notifications ----------------------------------------------------------
+
+export const notificationApi = {
+  list: (params) => apiClient.get("/notifications", { params }).then(unwrap),
+  unreadCount: () => apiClient.get("/notifications/unread-count").then(unwrap),
+  markRead: (id) => apiClient.patch(`/notifications/${id}/read`).then(unwrap),
+  markAllRead: () => apiClient.patch("/notifications/read-all").then(unwrap),
 };
 
 // --- Health -----------------------------------------------------------------
@@ -95,6 +107,11 @@ export const appointmentApi = {
 // --- Admin ------------------------------------------------------------------
 
 export const adminApi = {
+  stats: () => apiClient.get("/admin/stats").then(unwrap),
+  auditLogs: (params) => apiClient.get("/admin/audit-logs", { params }).then(unwrap),
+  auditSummary: (days) => apiClient.get("/admin/audit-summary", { params: { days } }).then(unwrap),
+  transactions: (params) =>
+    apiClient.get("/admin/blockchain/transactions", { params }).then(unwrap),
   users: (params) => apiClient.get("/admin/users", { params }).then(unwrap),
   user: (id) => apiClient.get(`/admin/users/${id}`).then(unwrap),
   setUserStatus: (id, isActive) =>

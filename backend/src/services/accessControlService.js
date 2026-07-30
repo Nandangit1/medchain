@@ -1,10 +1,14 @@
+const { AUDIT_ACTIONS } = require("../constants/audit");
 const { DOCTOR_VERIFICATION_STATUS, ROLES } = require("../constants/roles");
+const { NOTIFICATION_TYPES } = require("../models/Notification");
 const accessPermissionRepository = require("../repositories/accessPermissionRepository");
 const medicalRecordRepository = require("../repositories/medicalRecordRepository");
 const userRepository = require("../repositories/userRepository");
 const AppError = require("../utils/AppError");
 const { buildPagination, buildPaginationMeta } = require("../utils/pagination");
+const auditService = require("./auditService");
 const blockchainService = require("./blockchainService");
+const notificationService = require("./notificationService");
 
 /**
  * Access Control Service — Module 5.
@@ -67,7 +71,7 @@ const loadVerifiedDoctor = async (doctorId) => {
  * as `grantTx.status: "failed"` and the doctor can still work — the anchor is
  * an audit record, not the gate.
  */
-const grantAccess = async ({ actor, recordId, doctorId, expiresAt, note }) => {
+const grantAccess = async ({ actor, recordId, doctorId, expiresAt, note, req }) => {
   const record = await loadRecordOwnedBy(recordId, actor._id);
   const doctor = await loadVerifiedDoctor(doctorId);
 
@@ -115,10 +119,28 @@ const grantAccess = async ({ actor, recordId, doctorId, expiresAt, note }) => {
   permission.grantTx = grantTx;
   await permission.save();
 
+  await auditService.record({
+    action: AUDIT_ACTIONS.ACCESS_GRANTED,
+    actor,
+    targetUser: doctor,
+    targetRecord: record,
+    description: `Granted ${doctor.name} access to "${record.title}"`,
+    metadata: { expiresAt: expiresAt || null, txHash: grantTx.txHash },
+    req,
+  });
+
+  await notificationService.push({
+    user: doctor._id,
+    type: NOTIFICATION_TYPES.RECORD_SHARED,
+    title: "A patient shared a record with you",
+    message: `${actor.name} gave you access to "${record.title}".`,
+    link: `/doctor/records/${record._id}`,
+  });
+
   return permission.toClientObject();
 };
 
-const revokeAccess = async ({ actor, recordId, doctorId }) => {
+const revokeAccess = async ({ actor, recordId, doctorId, req }) => {
   const record = await loadRecordOwnedBy(recordId, actor._id);
 
   const permission = await accessPermissionRepository.findActiveRow(recordId, doctorId);
@@ -134,6 +156,24 @@ const revokeAccess = async ({ actor, recordId, doctorId }) => {
 
   revoked.revokeTx = revokeTx;
   await revoked.save();
+
+  await auditService.record({
+    action: AUDIT_ACTIONS.ACCESS_REVOKED,
+    actor,
+    targetUser: doctor,
+    targetRecord: record,
+    description: `Revoked ${doctor?.name ?? "a doctor"}'s access to "${record.title}"`,
+    metadata: { txHash: revokeTx.txHash },
+    req,
+  });
+
+  await notificationService.push({
+    user: doctorId,
+    type: NOTIFICATION_TYPES.ACCESS_REVOKED,
+    title: "Access to a record was revoked",
+    message: `You can no longer view "${record.title}".`,
+    link: "/doctor/records",
+  });
 
   return revoked.toClientObject();
 };

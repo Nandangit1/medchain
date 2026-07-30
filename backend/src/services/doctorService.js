@@ -134,12 +134,13 @@ const listMyDiagnoses = async ({ actor, query }) => {
  * prescription is exactly as tamper-evident as a lab report. It is forced to
  * `recordType: prescription` regardless of what the client sends.
  */
-const uploadPrescription = async ({ actor, patientId, file, payload }) => {
+const uploadPrescription = async ({ actor, patientId, file, payload, req }) => {
   const record = await medicalRecordService.uploadRecordForPatient({
     actor,
     patientId,
     file,
     payload: { ...payload, recordType: RECORD_TYPES.PRESCRIPTION },
+    req,
   });
 
   if (payload.diagnosisId) {

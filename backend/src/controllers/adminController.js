@@ -1,6 +1,11 @@
 const { DOCTOR_VERIFICATION_STATUS, ROLES } = require("../constants/roles");
 const User = require("../models/User");
+const adminService = require("../services/adminService");
+const auditService = require("../services/auditService");
 const blockchainService = require("../services/blockchainService");
+const notificationService = require("../services/notificationService");
+const { AUDIT_ACTIONS } = require("../constants/audit");
+const { NOTIFICATION_TYPES } = require("../models/Notification");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 const { buildPagination, buildPaginationMeta } = require("../utils/pagination");
@@ -71,6 +76,30 @@ const sendPaginatedUsers = async (res, message, filter, query) => {
   });
 };
 
+exports.getAuditLogs = catchAsync(async (req, res) => {
+  const result = await auditService.list(req.query);
+
+  sendSuccess(res, 200, "Audit log fetched successfully.", result);
+});
+
+exports.getAuditSummary = catchAsync(async (req, res) => {
+  const summary = await auditService.summary(Number(req.query.days) || 30);
+
+  sendSuccess(res, 200, "Audit summary fetched successfully.", { summary });
+});
+
+exports.getBlockchainTransactions = catchAsync(async (req, res) => {
+  const result = await adminService.listBlockchainTransactions(req.query);
+
+  sendSuccess(res, 200, "Blockchain transactions fetched successfully.", result);
+});
+
+exports.getPlatformStats = catchAsync(async (req, res) => {
+  const stats = await adminService.getPlatformStats();
+
+  sendSuccess(res, 200, "Platform statistics fetched successfully.", { stats });
+});
+
 exports.getUsers = catchAsync(async (req, res) => {
   await sendPaginatedUsers(res, "Users fetched successfully.", buildUserSearchFilter(req.query), req.query);
 });
@@ -125,6 +154,22 @@ exports.verifyDoctor = catchAsync(async (req, res, next) => {
       .catch((error) => ({ error: error.message }));
   }
 
+  await auditService.record({
+    action: AUDIT_ACTIONS.DOCTOR_VERIFIED,
+    actor: req.user,
+    targetUser: doctor,
+    description: `Verified Dr. ${doctor.name} (${doctor.doctorProfile?.medicalLicenseNumber})`,
+    req,
+  });
+
+  await notificationService.push({
+    user: doctor._id,
+    type: NOTIFICATION_TYPES.DOCTOR_VERIFIED,
+    title: "Your credentials have been verified",
+    message: "Patients can now share their medical records with you.",
+    link: "/doctor",
+  });
+
   return sendSuccess(res, 200, "Doctor verified successfully.", {
     doctor: doctor.toAdminObject(),
     onChain,
@@ -148,6 +193,22 @@ exports.rejectDoctor = catchAsync(async (req, res, next) => {
 
   await doctor.save({ validateBeforeSave: false });
 
+  await auditService.record({
+    action: AUDIT_ACTIONS.DOCTOR_REJECTED,
+    actor: req.user,
+    targetUser: doctor,
+    description: `Rejected Dr. ${doctor.name}: ${req.body.rejectionReason}`,
+    req,
+  });
+
+  await notificationService.push({
+    user: doctor._id,
+    type: NOTIFICATION_TYPES.DOCTOR_REJECTED,
+    title: "Your verification was declined",
+    message: req.body.rejectionReason,
+    link: "/profile",
+  });
+
   return sendSuccess(res, 200, "Doctor rejected successfully.", {
     doctor: doctor.toAdminObject(),
   });
@@ -166,6 +227,14 @@ exports.updateUserStatus = catchAsync(async (req, res, next) => {
 
   user.isActive = req.body.isActive;
   await user.save({ validateBeforeSave: false });
+
+  await auditService.record({
+    action: AUDIT_ACTIONS.USER_STATUS_CHANGED,
+    actor: req.user,
+    targetUser: user,
+    description: `${req.body.isActive ? "Activated" : "Deactivated"} ${user.email}`,
+    req,
+  });
 
   return sendSuccess(
     res,

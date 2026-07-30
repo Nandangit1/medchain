@@ -15,6 +15,7 @@ exports.uploadRecord = catchAsync(async (req, res) => {
     actor: req.user,
     file: req.file,
     payload: req.body,
+    req,
   });
 
   sendSuccess(res, 201, "Medical record uploaded and pinned successfully.", { record });
@@ -46,6 +47,7 @@ exports.downloadRecord = catchAsync(async (req, res) => {
   const { buffer, record } = await medicalRecordService.downloadRecord({
     actor: req.user,
     recordId: req.params.recordId,
+    req,
   });
 
   res.set({
