@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "//start:site": "Serves frontend/dist and the API from one port. Run the frontend build first.",
+    "start:site": "node src/site.js",
     "seed:admin": "node src/scripts/seedAdmin.js",
     "backfill:anchors": "node src/scripts/backfillAnchors.js",
     "test": "node -r dotenv/config --test \"tests/unit.test.js\"",

@@ -97,6 +97,21 @@ const env = {
   PINATA_GATEWAY_URL: process.env.PINATA_GATEWAY_URL || "https://gateway.pinata.cloud",
   LOCAL_IPFS_PATH: process.env.LOCAL_IPFS_PATH || "./.local/ipfs",
   MAX_UPLOAD_SIZE_MB: Number(process.env.MAX_UPLOAD_SIZE_MB || 10),
+  /**
+   * When true, this server also serves frontend/dist — one process, one port,
+   * one origin. That removes CORS entirely and makes the refresh cookie
+   * straightforward. Requires `npm run build` in frontend/ first.
+   */
+  SERVE_FRONTEND: String(process.env.SERVE_FRONTEND || "false").toLowerCase() === "true",
+  DISABLE_AUTO_INDEX: String(process.env.DISABLE_AUTO_INDEX || "false").toLowerCase() === "true",
+  /**
+   * Set only when the app is genuinely behind TLS. It controls the `secure`
+   * cookie flag and whether CSP asks the browser to upgrade requests to https —
+   * both of which break a site served over plain http.
+   */
+  TRUST_TLS:
+    String(process.env.TRUST_TLS || (process.env.NODE_ENV === "production" ? "true" : "false"))
+      .toLowerCase() === "true",
   BLOCKCHAIN_ENABLED: blockchainEnabled,
   BLOCKCHAIN_RPC_URL: process.env.BLOCKCHAIN_RPC_URL || "http://127.0.0.1:8545",
   BLOCKCHAIN_CHAIN_ID: Number(process.env.BLOCKCHAIN_CHAIN_ID || 31337),

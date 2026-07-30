@@ -1,0 +1,105 @@
+# MedChain — full stack in one command.
+#
+#   docker compose up --build       then open http://localhost:8080
+#
+# Brings up MongoDB, a Hardhat chain, contract deployment, and the app. The
+# deploy step runs once and exits; the app waits for it so it never starts
+# against a chain with no contract on it.
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: medchain-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  chain:
+    image: node:20-alpine
+    container_name: medchain-chain
+    working_dir: /chain
+    # --hostname 0.0.0.0 is required, or the RPC only listens on loopback
+    # inside the container and no other service can reach it.
+    command: sh -c "npm ci --silent && npx hardhat node --hostname 0.0.0.0"
+    volumes:
+      - ./blockchain:/chain
+      - chain-modules:/chain/node_modules
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget -qO- --post-data='{"jsonrpc":"2.0","method":"eth_blockNumber","id":1}'
+          --header='Content-Type: application/json' http://127.0.0.1:8545 || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
+  # Runs once to publish the contract, then exits.
+  deployer:
+    image: node:20-alpine
+    container_name: medchain-deployer
+    working_dir: /chain
+    command: sh -c "npx hardhat run scripts/deploy.js --network docker"
+    environment:
+      DOCKER_RPC_URL: http://chain:8545
+    volumes:
+      - ./blockchain:/chain
+      - chain-modules:/chain/node_modules
+      # The deploy script writes the ABI here for the app to pick up.
+      - ./backend/src/config/contracts:/backend/src/config/contracts
+    depends_on:
+      chain:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build: .
+    container_name: medchain-app
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      NODE_ENV: production
+      SERVE_FRONTEND: "true"
+      PORT: "8080"
+      # Plain http inside Docker, so a secure cookie would be dropped.
+      TRUST_TLS: "false"
+      MONGODB_URI: mongodb://mongo:27017/blockchain_telemedicine
+      CORS_ORIGIN: http://localhost:8080,http://medchain.local:8080
+      IPFS_DRIVER: local
+      LOCAL_IPFS_PATH: /app/backend/.local/ipfs
+      BLOCKCHAIN_ENABLED: "true"
+      BLOCKCHAIN_RPC_URL: http://chain:8545
+      BLOCKCHAIN_CHAIN_ID: "31337"
+      # Hardhat account #1 — a publicly known test key. Never use on a live network.
+      REGISTRAR_PRIVATE_KEY: "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+      # Supplied from a .env file at the repository root, NOT committed.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in a root .env file}
+      FILE_ENCRYPTION_KEY: ${FILE_ENCRYPTION_KEY:?set FILE_ENCRYPTION_KEY in a root .env file}
+      CUSTODIAL_WALLET_SEED: ${CUSTODIAL_WALLET_SEED:?set CUSTODIAL_WALLET_SEED in a root .env file}
+      CONTRACT_ADDRESS: ${CONTRACT_ADDRESS:-0x5FbDB2315678afecb367f032d93F642f64180aa3}
+      ADMIN_NAME: ${ADMIN_NAME:-System Admin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@12345}
+    volumes:
+      - ipfs-data:/app/backend/.local/ipfs
+      - app-logs:/app/backend/logs
+      - ./backend/src/config/contracts:/app/backend/src/config/contracts:ro
+    depends_on:
+      mongo:
+        condition: service_healthy
+      deployer:
+        condition: service_completed_successfully
+
+volumes:
+  mongo-data:
+  ipfs-data:
+  app-logs:
+  chain-modules:

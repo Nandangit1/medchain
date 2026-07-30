@@ -60,8 +60,18 @@ const register = async (label, role = "patient", extra = {}) => {
 
 describe("Module 11 — sessions, resets, notifications, audit", () => {
   let admin;
+  /**
+   * The reset link is returned in the response body ONLY outside production,
+   * because there is no mail transport wired up. In production it is
+   * deliberately withheld, so the tests that need the raw token assert the
+   * withholding instead of the flow.
+   */
+  let isProduction = false;
 
   before(async () => {
+    const health = await api("/health");
+    isProduction = health.body?.data?.environment === "production";
+
     const login = await api("/auth/login", {
       method: "POST",
       body: {
@@ -145,7 +155,31 @@ describe("Module 11 — sessions, resets, notifications, audit", () => {
       assert.match(unknown.body.message, /if an account exists/i);
     });
 
-    it("resets a password with a valid token and signs the user in", async () => {
+    it("NEVER returns the reset link in production", async (t) => {
+      if (!isProduction) {
+        return t.skip("server is not in production mode");
+      }
+
+      const user = await register("m11.prodleak");
+
+      const requested = await api("/auth/forgot-password", {
+        method: "POST",
+        body: { email: user.email },
+      });
+
+      assert.equal(requested.status, 200);
+      assert.equal(
+        requested.body.data?.resetUrl,
+        undefined,
+        "the reset link must never be returned in a production response"
+      );
+    });
+
+    it("resets a password with a valid token and signs the user in", async (t) => {
+      if (isProduction) {
+        return t.skip("reset link is withheld in production; covered by the test above");
+      }
+
       const user = await register("m11.reset");
 
       const requested = await api("/auth/forgot-password", {
@@ -183,7 +217,11 @@ describe("Module 11 — sessions, resets, notifications, audit", () => {
       assert.equal(oldLogin.status, 401);
     });
 
-    it("refuses to reuse a spent reset token", async () => {
+    it("refuses to reuse a spent reset token", async (t) => {
+      if (isProduction) {
+        return t.skip("reset link is withheld in production");
+      }
+
       const user = await register("m11.reset2");
 
       const requested = await api("/auth/forgot-password", {
@@ -220,7 +258,11 @@ describe("Module 11 — sessions, resets, notifications, audit", () => {
       assert.equal(response.status, 400);
     });
 
-    it("revokes existing sessions after a reset", async () => {
+    it("revokes existing sessions after a reset", async (t) => {
+      if (isProduction) {
+        return t.skip("reset link is withheld in production");
+      }
+
       const user = await register("m11.reset3");
 
       const requested = await api("/auth/forgot-password", {

@@ -1,0 +1,110 @@
+# MedChain — deployment blueprint for Render.
+#
+# Render reads this file and provisions everything described. The free tier is
+# enough for a project demo.
+#
+# ONE-TIME SETUP (needs your accounts — nobody can do this on your behalf):
+#
+#   1. Push this repository to GitHub.
+#   2. Create a free MongoDB Atlas cluster and copy its connection string.
+#   3. On render.com: New -> Blueprint -> select your repository.
+#   4. Fill in the four values marked `sync: false` when prompted.
+#   5. Deploy. You get https://medchain.onrender.com with TLS included.
+#
+# For a custom domain (medchain.com or similar) you must buy the domain, then
+# add it under Settings -> Custom Domains and point its DNS at Render.
+#
+# Free-tier caveat: the instance sleeps after ~15 minutes idle, so the first
+# request afterwards takes 30-60 seconds. Fine for a demo; mention it if an
+# examiner sees a slow first load.
+
+services:
+  - type: web
+    name: medchain
+    runtime: node
+    plan: free
+    region: singapore
+    branch: main
+
+    buildCommand: npm --prefix frontend ci && npm --prefix frontend run build && npm --prefix backend ci --omit=dev
+    startCommand: node backend/src/server.js
+
+    healthCheckPath: /api/v1/health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # One process serves the built React app and the API together.
+      - key: SERVE_FRONTEND
+        value: "true"
+
+      # Render terminates TLS, so the secure cookie flag is correct here.
+      - key: TRUST_TLS
+        value: "true"
+
+      # Indexes are built once by hand on a managed cluster.
+      # See docs/deployment-guide.md section 2.
+      - key: DISABLE_AUTO_INDEX
+        value: "true"
+
+      # --- Secrets: entered in the Render dashboard, never committed ---------
+
+      - key: MONGODB_URI
+        sync: false
+
+      # Generate each with:
+      #   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      - key: JWT_SECRET
+        sync: false
+
+      # Losing this makes every stored medical record permanently unreadable.
+      # Back it up somewhere outside the platform.
+      - key: FILE_ENCRYPTION_KEY
+        sync: false
+
+      # Changing this orphans every user's on-chain identity.
+      - key: CUSTODIAL_WALLET_SEED
+        sync: false
+
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+
+      # --- Storage ----------------------------------------------------------
+      # Render's filesystem is ephemeral, so the local IPFS driver would lose
+      # files on every restart. Pinata is required in production.
+      - key: IPFS_DRIVER
+        value: pinata
+      - key: PINATA_JWT
+        sync: false
+      - key: PINATA_GATEWAY_URL
+        sync: false
+
+      # --- Blockchain -------------------------------------------------------
+      # Leave BLOCKCHAIN_ENABLED false until the contract is on a public
+      # testnet. The app runs fully without it: records are still encrypted and
+      # stored, and stay at blockchain.status "pending" until you enable it and
+      # run `npm run backfill:anchors`.
+      - key: BLOCKCHAIN_ENABLED
+        value: "false"
+      - key: BLOCKCHAIN_RPC_URL
+        sync: false
+      - key: BLOCKCHAIN_CHAIN_ID
+        value: "11155111"
+      # A public chain can reorg; one confirmation is not enough.
+      - key: BLOCKCHAIN_CONFIRMATIONS
+        value: "2"
+      - key: CONTRACT_ADDRESS
+        sync: false
+      - key: REGISTRAR_PRIVATE_KEY
+        sync: false
+
+      # Render injects the public URL, which the CORS allow-list reuses so the
+      # origin never has to be hardcoded.
+      - key: CORS_ORIGIN
+        fromService:
+          type: web
+          name: medchain
+          envVarKey: RENDER_EXTERNAL_URL

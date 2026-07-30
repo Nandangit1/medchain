@@ -160,7 +160,12 @@ const consumePasswordResetToken = async (rawToken) => {
 /** Cookie options for the refresh token. */
 const refreshCookieOptions = () => ({
   httpOnly: true,
-  secure: env.NODE_ENV === "production",
+  /**
+   * Keyed to actual TLS rather than NODE_ENV: a `secure` cookie is silently
+   * dropped over plain http, which would break sessions on a production build
+   * served without TLS (a LAN demo, for instance).
+   */
+  secure: env.TRUST_TLS,
   // Strict is what makes the CSRF surface on /refresh essentially nil.
   sameSite: "strict",
   path: "/api/v1/auth",

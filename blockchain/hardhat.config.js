@@ -37,6 +37,14 @@ module.exports = {
       url: "http://127.0.0.1:8545",
       chainId: 31337,
     },
+    /**
+     * Used by docker-compose, where the chain is a sibling service reachable by
+     * name rather than on loopback.
+     */
+    docker: {
+      url: process.env.DOCKER_RPC_URL || "http://chain:8545",
+      chainId: 31337,
+    },
     sepolia: {
       url: SEPOLIA_RPC_URL,
       accounts: liveAccounts,
