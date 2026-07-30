@@ -3,9 +3,11 @@ import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
-import { FiLock, FiShield } from "react-icons/fi";
+import { FiLock } from "react-icons/fi";
 import * as yup from "yup";
 
+import AuthLayout from "../../components/layout/AuthLayout";
+import PasswordInput from "../../components/PasswordInput";
 import useAuth from "../../hooks/useAuth";
 import { authApi } from "../../services";
 import { setStoredToken } from "../../services/apiClient";
@@ -63,82 +65,67 @@ const ResetPassword = () => {
     }
   };
 
-  return (
-    <div className="d-flex align-items-center justify-content-center min-vh-100 p-3">
-      <div className="w-100" style={{ maxWidth: 420 }}>
-        <div className="text-center mb-4">
-          <Link to="/" className="d-inline-flex align-items-center gap-2 fw-bold fs-5 text-decoration-none">
-            <span className="bts-brand-mark">
-              <FiShield />
-            </span>
-            MedChain
-          </Link>
-        </div>
+  if (!token) {
+    return (
+      <AuthLayout
+        title="This link is incomplete"
+        subtitle="The reset link is missing its token."
+      >
+        <Link to="/forgot-password" className="btn btn-primary w-100">
+          Request a new link
+        </Link>
+      </AuthLayout>
+    );
+  }
 
-        <div className="bts-card p-4 bts-fade-in">
-          {!token ? (
+  return (
+    <AuthLayout
+      title="Set a new password"
+      subtitle="Choosing a new password signs you out of every other device."
+      footer={
+        <span className="text-muted small">
+          Remembered it? <Link to="/login">Sign in</Link>
+        </span>
+      }
+    >
+      <form onSubmit={handleSubmit(onSubmit)} noValidate>
+        <PasswordInput
+          className="mb-3"
+          id="newPassword"
+          label="New password"
+          autoComplete="new-password"
+          placeholder="At least 8 characters"
+          autoFocus
+          showStrength
+          error={errors.newPassword?.message}
+          {...register("newPassword")}
+        />
+
+        <PasswordInput
+          className="mb-4"
+          id="newPasswordConfirm"
+          label="Confirm new password"
+          autoComplete="new-password"
+          placeholder="Re-enter your new password"
+          error={errors.newPasswordConfirm?.message}
+          {...register("newPasswordConfirm")}
+        />
+
+        <button type="submit" className="btn btn-primary w-100" disabled={submitting}>
+          {submitting ? (
             <>
-              <h5 className="fw-bold mb-1">This link is incomplete</h5>
-              <p className="text-muted small mb-4">
-                The reset link is missing its token. Request a new one.
-              </p>
-              <Link to="/forgot-password" className="btn btn-primary w-100">
-                Request a new link
-              </Link>
+              <span className="spinner-border spinner-border-sm me-2" />
+              Resetting...
             </>
           ) : (
             <>
-              <h5 className="fw-bold mb-1">Set a new password</h5>
-              <p className="text-muted small mb-4">
-                Choosing a new password signs you out of every other device.
-              </p>
-
-              <form onSubmit={handleSubmit(onSubmit)} noValidate>
-                <div className="mb-3">
-                  <label className="form-label small fw-semibold">New password</label>
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    className={`form-control ${errors.newPassword ? "is-invalid" : ""}`}
-                    {...register("newPassword")}
-                  />
-                  {errors.newPassword && (
-                    <div className="invalid-feedback">{errors.newPassword.message}</div>
-                  )}
-                </div>
-
-                <div className="mb-4">
-                  <label className="form-label small fw-semibold">Confirm new password</label>
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    className={`form-control ${errors.newPasswordConfirm ? "is-invalid" : ""}`}
-                    {...register("newPasswordConfirm")}
-                  />
-                  {errors.newPasswordConfirm && (
-                    <div className="invalid-feedback">{errors.newPasswordConfirm.message}</div>
-                  )}
-                </div>
-
-                <button type="submit" className="btn btn-primary w-100" disabled={submitting}>
-                  {submitting ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-2" />
-                      Resetting...
-                    </>
-                  ) : (
-                    <>
-                      <FiLock className="me-2" />
-                      Reset password
-                    </>
-                  )}
-                </button>
-              </form>
+              <FiLock className="me-2" />
+              Reset password
             </>
           )}
-        </div>
-      </div>
-    </div>
+        </button>
+      </form>
+    </AuthLayout>
   );
 };
 

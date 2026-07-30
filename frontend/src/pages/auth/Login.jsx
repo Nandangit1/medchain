@@ -3,9 +3,11 @@ import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
-import { FiLogIn, FiShield } from "react-icons/fi";
+import { FiArrowRight } from "react-icons/fi";
 import * as yup from "yup";
 
+import AuthLayout from "../../components/layout/AuthLayout";
+import PasswordInput from "../../components/PasswordInput";
 import useAuth from "../../hooks/useAuth";
 import { homeForRole } from "../../routes/ProtectedRoute";
 
@@ -53,78 +55,62 @@ const Login = () => {
   };
 
   return (
-    <div className="d-flex align-items-center justify-content-center min-vh-100 p-3">
-      <div className="w-100" style={{ maxWidth: 420 }}>
-        <div className="text-center mb-4">
-          <Link to="/" className="d-inline-flex align-items-center gap-2 fw-bold fs-5 text-decoration-none">
-            <span className="bts-brand-mark">
-              <FiShield />
-            </span>
-            MedChain
-          </Link>
+    <AuthLayout
+      title="Sign in"
+      subtitle="Access your secure health records."
+      footer={
+        <span className="text-muted small">
+          No account yet? <Link to="/register">Create one</Link>
+        </span>
+      }
+    >
+      <form onSubmit={handleSubmit(onSubmit)} noValidate>
+        <div className="mb-3">
+          <label className="form-label" htmlFor="email">
+            Email address
+          </label>
+          <input
+            id="email"
+            type="email"
+            autoComplete="email"
+            autoFocus
+            className={`form-control ${errors.email ? "is-invalid" : ""}`}
+            placeholder="you@example.com"
+            {...register("email")}
+          />
+          {errors.email && <div className="invalid-feedback">{errors.email.message}</div>}
         </div>
 
-        <div className="bts-card p-4 bts-fade-in">
-          <h5 className="fw-bold mb-1">Sign in</h5>
-          <p className="text-muted small mb-4">Access your secure health records.</p>
+        <PasswordInput
+          className="mb-4"
+          id="password"
+          label="Password"
+          autoComplete="current-password"
+          placeholder="Enter your password"
+          error={errors.password?.message}
+          labelAction={
+            <Link to="/forgot-password" style={{ fontSize: "0.775rem" }}>
+              Forgot password?
+            </Link>
+          }
+          {...register("password")}
+        />
 
-          <form onSubmit={handleSubmit(onSubmit)} noValidate>
-            <div className="mb-3">
-              <label className="form-label small fw-semibold" htmlFor="email">
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                className={`form-control ${errors.email ? "is-invalid" : ""}`}
-                placeholder="you@example.com"
-                {...register("email")}
-              />
-              {errors.email && <div className="invalid-feedback">{errors.email.message}</div>}
-            </div>
-
-            <div className="mb-4">
-              <div className="d-flex justify-content-between align-items-center">
-                <label className="form-label small fw-semibold mb-0" htmlFor="password">
-                  Password
-                </label>
-                <Link to="/forgot-password" className="small">
-                  Forgot password?
-                </Link>
-              </div>
-              <input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                className={`form-control ${errors.password ? "is-invalid" : ""}`}
-                placeholder="••••••••"
-                {...register("password")}
-              />
-              {errors.password && <div className="invalid-feedback">{errors.password.message}</div>}
-            </div>
-
-            <button type="submit" className="btn btn-primary w-100" disabled={submitting}>
-              {submitting ? (
-                <>
-                  <span className="spinner-border spinner-border-sm me-2" />
-                  Signing in...
-                </>
-              ) : (
-                <>
-                  <FiLogIn className="me-2" />
-                  Sign in
-                </>
-              )}
-            </button>
-          </form>
-
-          <p className="text-center text-muted small mt-4 mb-0">
-            No account yet? <Link to="/register">Create one</Link>
-          </p>
-        </div>
-      </div>
-    </div>
+        <button type="submit" className="btn btn-primary w-100" disabled={submitting}>
+          {submitting ? (
+            <>
+              <span className="spinner-border spinner-border-sm me-2" />
+              Signing in...
+            </>
+          ) : (
+            <>
+              Sign in
+              <FiArrowRight className="ms-2" />
+            </>
+          )}
+        </button>
+      </form>
+    </AuthLayout>
   );
 };
 

@@ -3,15 +3,17 @@ import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import { FiShield, FiUserPlus } from "react-icons/fi";
+import { FiArrowRight, FiBriefcase, FiUser } from "react-icons/fi";
 import * as yup from "yup";
 
+import AuthLayout from "../../components/layout/AuthLayout";
+import PasswordInput from "../../components/PasswordInput";
 import useAuth from "../../hooks/useAuth";
 import { homeForRole } from "../../routes/ProtectedRoute";
 
 /**
- * Mirrors the backend's password policy exactly. Validating client-side is a
- * convenience only — the API re-checks every rule.
+ * Mirrors the backend password policy exactly. Validating here is a courtesy —
+ * the API re-checks every rule regardless.
  */
 const schema = yup.object({
   name: yup.string().required("Name is required.").min(2, "Name is too short.").max(80),
@@ -40,6 +42,11 @@ const schema = yup.object({
     otherwise: (s) => s.strip(),
   }),
 });
+
+const ROLE_OPTIONS = [
+  { value: "patient", label: "Patient", icon: <FiUser />, hint: "Own and share your records" },
+  { value: "doctor", label: "Doctor", icon: <FiBriefcase />, hint: "Requires verification" },
+];
 
 const Register = () => {
   const { register: registerUser } = useAuth();
@@ -76,7 +83,7 @@ const Register = () => {
 
       toast.success(
         user.role === "doctor"
-          ? "Account created. An administrator must verify your credentials before you can access patient records."
+          ? "Account created. An administrator must verify your credentials before patients can share records with you."
           : "Account created successfully."
       );
 
@@ -89,142 +96,145 @@ const Register = () => {
   };
 
   return (
-    <div className="d-flex align-items-center justify-content-center min-vh-100 p-3">
-      <div className="w-100" style={{ maxWidth: 520 }}>
-        <div className="text-center mb-4">
-          <Link to="/" className="d-inline-flex align-items-center gap-2 fw-bold fs-5 text-decoration-none">
-            <span className="bts-brand-mark">
-              <FiShield />
-            </span>
-            MedChain
-          </Link>
-        </div>
+    <AuthLayout
+      title="Create your account"
+      subtitle="Takes under a minute."
+      footer={
+        <span className="text-muted small">
+          Already registered? <Link to="/login">Sign in</Link>
+        </span>
+      }
+    >
+      <form onSubmit={handleSubmit(onSubmit)} noValidate>
+        <div className="mb-3">
+          <label className="form-label">I am a</label>
+          <div className="d-flex gap-2">
+            {ROLE_OPTIONS.map((option) => {
+              const selected = role === option.value;
 
-        <div className="bts-card p-4 bts-fade-in">
-          <h5 className="fw-bold mb-1">Create your account</h5>
-          <p className="text-muted small mb-4">Takes under a minute.</p>
-
-          <form onSubmit={handleSubmit(onSubmit)} noValidate>
-            <div className="mb-3">
-              <label className="form-label small fw-semibold">I am a</label>
-              <div className="d-flex gap-2">
-                {["patient", "doctor"].map((option) => (
-                  <label
-                    key={option}
-                    className={`flex-fill text-center border rounded-3 p-2 text-capitalize ${
-                      role === option ? "border-primary" : ""
-                    }`}
-                    style={{
-                      cursor: "pointer",
-                      background: role === option ? "var(--bts-teal-light)" : "transparent",
-                      borderColor: "var(--bts-border)",
-                    }}
+              return (
+                <label
+                  key={option.value}
+                  className="flex-fill text-center p-2 rounded-3"
+                  style={{
+                    cursor: "pointer",
+                    border: `1.5px solid ${selected ? "var(--bts-teal)" : "var(--bts-border-strong)"}`,
+                    background: selected ? "var(--bts-teal-50)" : "transparent",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <input type="radio" value={option.value} className="d-none" {...register("role")} />
+                  <span
+                    className="d-block mb-1"
+                    style={{ color: selected ? "var(--bts-teal)" : "var(--bts-text-muted)" }}
                   >
-                    <input type="radio" value={option} className="d-none" {...register("role")} />
-                    {option}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="mb-3">
-              <label className="form-label small fw-semibold" htmlFor="name">
-                Full name
-              </label>
-              <input
-                id="name"
-                className={`form-control ${errors.name ? "is-invalid" : ""}`}
-                {...register("name")}
-              />
-              {errors.name && <div className="invalid-feedback">{errors.name.message}</div>}
-            </div>
-
-            <div className="mb-3">
-              <label className="form-label small fw-semibold" htmlFor="regEmail">
-                Email
-              </label>
-              <input
-                id="regEmail"
-                type="email"
-                className={`form-control ${errors.email ? "is-invalid" : ""}`}
-                {...register("email")}
-              />
-              {errors.email && <div className="invalid-feedback">{errors.email.message}</div>}
-            </div>
-
-            {role === "doctor" && (
-              <div className="row g-2 mb-3">
-                <div className="col-sm-6">
-                  <label className="form-label small fw-semibold">Specialization</label>
-                  <input
-                    className={`form-control ${errors.specialization ? "is-invalid" : ""}`}
-                    placeholder="Cardiology"
-                    {...register("specialization")}
-                  />
-                  {errors.specialization && (
-                    <div className="invalid-feedback">{errors.specialization.message}</div>
-                  )}
-                </div>
-                <div className="col-sm-6">
-                  <label className="form-label small fw-semibold">Medical license no.</label>
-                  <input
-                    className={`form-control ${errors.medicalLicenseNumber ? "is-invalid" : ""}`}
-                    placeholder="MCI-123456"
-                    {...register("medicalLicenseNumber")}
-                  />
-                  {errors.medicalLicenseNumber && (
-                    <div className="invalid-feedback">{errors.medicalLicenseNumber.message}</div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="row g-2 mb-4">
-              <div className="col-sm-6">
-                <label className="form-label small fw-semibold">Password</label>
-                <input
-                  type="password"
-                  autoComplete="new-password"
-                  className={`form-control ${errors.password ? "is-invalid" : ""}`}
-                  {...register("password")}
-                />
-                {errors.password && <div className="invalid-feedback">{errors.password.message}</div>}
-              </div>
-              <div className="col-sm-6">
-                <label className="form-label small fw-semibold">Confirm password</label>
-                <input
-                  type="password"
-                  autoComplete="new-password"
-                  className={`form-control ${errors.confirmPassword ? "is-invalid" : ""}`}
-                  {...register("confirmPassword")}
-                />
-                {errors.confirmPassword && (
-                  <div className="invalid-feedback">{errors.confirmPassword.message}</div>
-                )}
-              </div>
-            </div>
-
-            <button type="submit" className="btn btn-primary w-100" disabled={submitting}>
-              {submitting ? (
-                <>
-                  <span className="spinner-border spinner-border-sm me-2" />
-                  Creating account...
-                </>
-              ) : (
-                <>
-                  <FiUserPlus className="me-2" />
-                  Create account
-                </>
-              )}
-            </button>
-          </form>
-
-          <p className="text-center text-muted small mt-4 mb-0">
-            Already registered? <Link to="/login">Sign in</Link>
-          </p>
+                    {option.icon}
+                  </span>
+                  <span className="d-block fw-semibold" style={{ fontSize: "0.85rem" }}>
+                    {option.label}
+                  </span>
+                  <span className="d-block text-muted" style={{ fontSize: "0.7rem" }}>
+                    {option.hint}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
         </div>
-      </div>
-    </div>
+
+        <div className="mb-3">
+          <label className="form-label" htmlFor="name">
+            Full name
+          </label>
+          <input
+            id="name"
+            autoComplete="name"
+            className={`form-control ${errors.name ? "is-invalid" : ""}`}
+            placeholder="Jane Doe"
+            {...register("name")}
+          />
+          {errors.name && <div className="invalid-feedback">{errors.name.message}</div>}
+        </div>
+
+        <div className="mb-3">
+          <label className="form-label" htmlFor="regEmail">
+            Email address
+          </label>
+          <input
+            id="regEmail"
+            type="email"
+            autoComplete="email"
+            className={`form-control ${errors.email ? "is-invalid" : ""}`}
+            placeholder="you@example.com"
+            {...register("email")}
+          />
+          {errors.email && <div className="invalid-feedback">{errors.email.message}</div>}
+        </div>
+
+        {role === "doctor" && (
+          <div className="row g-2 mb-3">
+            <div className="col-sm-6">
+              <label className="form-label">Specialization</label>
+              <input
+                className={`form-control ${errors.specialization ? "is-invalid" : ""}`}
+                placeholder="Cardiology"
+                {...register("specialization")}
+              />
+              {errors.specialization && (
+                <div className="invalid-feedback">{errors.specialization.message}</div>
+              )}
+            </div>
+            <div className="col-sm-6">
+              <label className="form-label">Medical licence no.</label>
+              <input
+                className={`form-control ${errors.medicalLicenseNumber ? "is-invalid" : ""}`}
+                placeholder="MCI-123456"
+                {...register("medicalLicenseNumber")}
+              />
+              {errors.medicalLicenseNumber && (
+                <div className="invalid-feedback">{errors.medicalLicenseNumber.message}</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <PasswordInput
+          className="mb-3"
+          id="regPassword"
+          label="Password"
+          autoComplete="new-password"
+          placeholder="At least 8 characters"
+          showStrength
+          error={errors.password?.message}
+          hint="Needs upper and lower case, a number and a special character."
+          {...register("password")}
+        />
+
+        <PasswordInput
+          className="mb-4"
+          id="confirmPassword"
+          label="Confirm password"
+          autoComplete="new-password"
+          placeholder="Re-enter your password"
+          error={errors.confirmPassword?.message}
+          {...register("confirmPassword")}
+        />
+
+        <button type="submit" className="btn btn-primary w-100" disabled={submitting}>
+          {submitting ? (
+            <>
+              <span className="spinner-border spinner-border-sm me-2" />
+              Creating account...
+            </>
+          ) : (
+            <>
+              Create account
+              <FiArrowRight className="ms-2" />
+            </>
+          )}
+        </button>
+      </form>
+    </AuthLayout>
   );
 };
 

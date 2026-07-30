@@ -180,19 +180,7 @@ const DashboardLayout = () => {
 
             <Dropdown align="end">
               <Dropdown.Toggle variant="light" size="sm" className="d-flex align-items-center gap-2">
-                <span
-                  className="rounded-circle d-grid place-items-center"
-                  style={{
-                    width: 28,
-                    height: 28,
-                    background: "var(--bts-teal)",
-                    color: "#fff",
-                    fontSize: "0.72rem",
-                    fontWeight: 700,
-                    display: "grid",
-                    placeItems: "center",
-                  }}
-                >
+                <span className="bts-avatar" style={{ width: 26, height: 26, fontSize: "0.68rem" }}>
                   {initials}
                 </span>
                 <span className="d-none d-sm-inline">{user?.name}</span>

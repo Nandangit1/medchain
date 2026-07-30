@@ -3,9 +3,10 @@ import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
-import { FiArrowLeft, FiMail, FiShield } from "react-icons/fi";
+import { FiArrowLeft, FiCheckCircle, FiMail } from "react-icons/fi";
 import * as yup from "yup";
 
+import AuthLayout from "../../components/layout/AuthLayout";
 import { authApi } from "../../services";
 
 const schema = yup.object({
@@ -44,88 +45,77 @@ const ForgotPassword = () => {
     }
   };
 
-  return (
-    <div className="d-flex align-items-center justify-content-center min-vh-100 p-3">
-      <div className="w-100" style={{ maxWidth: 420 }}>
-        <div className="text-center mb-4">
-          <Link to="/" className="d-inline-flex align-items-center gap-2 fw-bold fs-5 text-decoration-none">
-            <span className="bts-brand-mark">
-              <FiShield />
-            </span>
-            MedChain
-          </Link>
+  if (sent) {
+    return (
+      <AuthLayout
+        title="Check your inbox"
+        subtitle="If an account exists for that address, we have sent a link to reset your password. It expires in 30 minutes."
+      >
+        <div className="alert alert-success d-flex gap-2 align-items-start">
+          <FiCheckCircle className="mt-1 flex-shrink-0" />
+          <span>Request received. The link can only be used once.</span>
         </div>
 
-        <div className="bts-card p-4 bts-fade-in">
-          {sent ? (
+        {devLink && (
+          <div className="alert alert-warning">
+            <div className="fw-semibold mb-1">Development mode</div>
+            No mail server is configured, so here is the link:
+            <a className="d-block text-break mt-1" href={devLink}>
+              {devLink}
+            </a>
+          </div>
+        )}
+
+        <Link to="/login" className="btn btn-outline-primary w-100">
+          <FiArrowLeft className="me-2" />
+          Back to sign in
+        </Link>
+      </AuthLayout>
+    );
+  }
+
+  return (
+    <AuthLayout
+      title="Forgot your password?"
+      subtitle="Enter your email and we will send you a link to set a new one."
+      footer={
+        <Link to="/login" className="small">
+          Back to sign in
+        </Link>
+      }
+    >
+      <form onSubmit={handleSubmit(onSubmit)} noValidate>
+        <div className="mb-4">
+          <label className="form-label" htmlFor="fpEmail">
+            Email address
+          </label>
+          <input
+            id="fpEmail"
+            type="email"
+            autoComplete="email"
+            autoFocus
+            className={`form-control ${errors.email ? "is-invalid" : ""}`}
+            placeholder="you@example.com"
+            {...register("email")}
+          />
+          {errors.email && <div className="invalid-feedback">{errors.email.message}</div>}
+        </div>
+
+        <button type="submit" className="btn btn-primary w-100" disabled={submitting}>
+          {submitting ? (
             <>
-              <h5 className="fw-bold mb-1">Check your inbox</h5>
-              <p className="text-muted small mb-3">
-                If an account exists for that address, we have sent a link to reset your password.
-                It expires in 30 minutes.
-              </p>
-
-              {devLink && (
-                <div className="alert alert-warning small">
-                  <div className="fw-semibold mb-1">Development mode</div>
-                  No mail server is configured, so here is the link:
-                  <a className="d-block text-break mt-1" href={devLink}>
-                    {devLink}
-                  </a>
-                </div>
-              )}
-
-              <Link to="/login" className="btn btn-outline-primary w-100">
-                <FiArrowLeft className="me-1" />
-                Back to sign in
-              </Link>
+              <span className="spinner-border spinner-border-sm me-2" />
+              Sending...
             </>
           ) : (
             <>
-              <h5 className="fw-bold mb-1">Forgot your password?</h5>
-              <p className="text-muted small mb-4">
-                Enter your email and we will send you a link to set a new one.
-              </p>
-
-              <form onSubmit={handleSubmit(onSubmit)} noValidate>
-                <div className="mb-4">
-                  <label className="form-label small fw-semibold" htmlFor="fpEmail">
-                    Email
-                  </label>
-                  <input
-                    id="fpEmail"
-                    type="email"
-                    autoComplete="email"
-                    className={`form-control ${errors.email ? "is-invalid" : ""}`}
-                    placeholder="you@example.com"
-                    {...register("email")}
-                  />
-                  {errors.email && <div className="invalid-feedback">{errors.email.message}</div>}
-                </div>
-
-                <button type="submit" className="btn btn-primary w-100" disabled={submitting}>
-                  {submitting ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-2" />
-                      Sending...
-                    </>
-                  ) : (
-                    <>
-                      <FiMail className="me-2" />
-                      Send reset link
-                    </>
-                  )}
-                </button>
-              </form>
-
-              <p className="text-center text-muted small mt-4 mb-0">
-                <Link to="/login">Back to sign in</Link>
-              </p>
+              <FiMail className="me-2" />
+              Send reset link
             </>
           )}
-        </div>
-      </div>
-    </div>
+        </button>
+      </form>
+    </AuthLayout>
   );
 };
 

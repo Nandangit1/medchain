@@ -4,6 +4,7 @@ import { toast } from "react-toastify";
 import { FiLock, FiSave } from "react-icons/fi";
 
 import { PageHeader, StatusChip, formatDate } from "../components/common";
+import PasswordInput from "../components/PasswordInput";
 import useAuth from "../hooks/useAuth";
 import { authApi } from "../services";
 
@@ -140,29 +141,27 @@ const Profile = () => {
           <form onSubmit={savePassword} className="bts-card p-4">
             <h6 className="fw-bold mb-3">Change password</h6>
 
-            <div className="mb-3">
-              <label className="form-label small fw-semibold">Current password</label>
-              <input
-                required
-                type="password"
-                autoComplete="current-password"
-                className="form-control"
-                value={passwords.currentPassword}
-                onChange={(event) =>
-                  setPasswords({ ...passwords, currentPassword: event.target.value })
-                }
-              />
-            </div>
+            <PasswordInput
+              className="mb-3"
+              id="currentPassword"
+              label="Current password"
+              required
+              autoComplete="current-password"
+              value={passwords.currentPassword}
+              onChange={(event) =>
+                setPasswords({ ...passwords, currentPassword: event.target.value })
+              }
+            />
 
             <div className="row g-2 mb-3">
               <div className="col-sm-6">
-                <label className="form-label small fw-semibold">New password</label>
-                <input
+                <PasswordInput
+                  id="profileNewPassword"
+                  label="New password"
                   required
-                  type="password"
                   minLength={8}
                   autoComplete="new-password"
-                  className="form-control"
+                  showStrength
                   value={passwords.newPassword}
                   onChange={(event) =>
                     setPasswords({ ...passwords, newPassword: event.target.value })
@@ -170,12 +169,17 @@ const Profile = () => {
                 />
               </div>
               <div className="col-sm-6">
-                <label className="form-label small fw-semibold">Confirm new password</label>
-                <input
+                <PasswordInput
+                  id="profileConfirmPassword"
+                  label="Confirm new password"
                   required
-                  type="password"
                   autoComplete="new-password"
-                  className="form-control"
+                  error={
+                    passwords.newPasswordConfirm &&
+                    passwords.newPassword !== passwords.newPasswordConfirm
+                      ? "Passwords do not match."
+                      : undefined
+                  }
                   value={passwords.newPasswordConfirm}
                   onChange={(event) =>
                     setPasswords({ ...passwords, newPasswordConfirm: event.target.value })

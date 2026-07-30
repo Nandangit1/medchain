@@ -124,17 +124,8 @@ const ShareModal = ({ show, recordId, onHide, onShared }) => {
                   }}
                 >
                   <span
-                    className="rounded-circle flex-shrink-0"
-                    style={{
-                      width: 34,
-                      height: 34,
-                      background: "var(--bts-teal)",
-                      color: "#fff",
-                      display: "grid",
-                      placeItems: "center",
-                      fontSize: "0.75rem",
-                      fontWeight: 700,
-                    }}
+                    className="bts-avatar"
+                    style={{ width: 34, height: 34, fontSize: "0.75rem" }}
                   >
                     {doctor.name
                       .split(" ")
