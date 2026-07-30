@@ -9,7 +9,10 @@
     "start": "node src/server.js",
     "seed:admin": "node src/scripts/seedAdmin.js",
     "backfill:anchors": "node src/scripts/backfillAnchors.js",
-    "test:integration": "node -r dotenv/config --test \"tests/*.test.js\"",
+    "test": "node -r dotenv/config --test \"tests/unit.test.js\"",
+    "test:unit": "node -r dotenv/config --test \"tests/unit.test.js\"",
+    "test:integration": "node -r dotenv/config --test \"tests/*integration.test.js\"",
+    "test:all": "node -r dotenv/config --test \"tests/*.test.js\"",
     "lint": "eslint src tests",
     "lint:fix": "eslint src tests --fix",
     "format": "prettier --write \"src/**/*.js\" \"tests/**/*.js\""

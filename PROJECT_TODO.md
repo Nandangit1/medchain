@@ -1,286 +1,171 @@
-# Blockchain-Based Secure Telemedicine System — Execution Plan
+# Blockchain-Based Secure Telemedicine System — Status
 
-Last updated: 2026-07-29 · Modules 1–10 complete · Module 11 in progress
+Last updated: 2026-07-30 · **All 11 modules complete**
 
-**Current state:** backend, smart contract and all three portals are built and
-running. 47 API integration tests and 38 contract tests pass. What remains is
-Module 11 — the cross-cutting features nobody owned, the documentation set, and
-production hardening. See §11.
-
-Legend: `S` ≈ half a day · `M` ≈ 1–2 days · `L` ≈ 3–5 days
+144 automated tests passing: 32 unit, 74 API integration, 38 smart contract.
+Backend lint clean. Frontend builds clean with route-level code splitting.
 
 ---
 
-## 1. Status snapshot
+## 1. Delivered
 
-| Area | State |
-| --- | --- |
-| Backend foundation, auth, RBAC | Done (M1) |
-| Admin user + doctor verification | Done (M2) |
-| Medical records, encryption, IPFS | Done (M3) |
-| Service + repository layers | Introduced M3; M1–M2 not yet migrated |
-| Smart contract / blockchain | Done (M4) — deployed locally, anchoring live |
-| Frontend | Not started |
-| Appointments, notifications, audit log | Not started, **and unassigned in the original plan** |
-| Documentation | README, records API, blockchain layer |
-| Version control | Git installed, repo initialised, first commit made |
+| Module | Scope | Tests |
+| --- | --- | --- |
+| 1 | Backend foundation, env validation, JWT auth, RBAC | — |
+| 2 | Admin doctor verification, user management | — |
+| 3 | Medical records, AES-256-GCM envelope encryption, pluggable IPFS | 17 |
+| 4 | Solidity contract, Hardhat, ethers, anchoring, backfill | 38 |
+| 5 | Record sharing, grant/revoke, on-chain history | 21 |
+| 6 | Doctor workflows, diagnoses, prescriptions | (in 5) |
+| 6b | Appointments with an enforced status lifecycle | 9 |
+| 7 | React foundation, Axios + refresh, guards, theming | — |
+| 8 | Patient portal | — |
+| 9 | Doctor portal | — |
+| 10 | Admin portal, analytics, audit viewer, tx explorer | — |
+| 11 | Refresh tokens, password reset, audit log, notifications, logging, docs | 27 + 32 |
 
-Backend API surface today: 6 auth endpoints, 6 admin endpoints, 7 record endpoints.
-Tests: 17 API integration + 38 smart contract, all passing.
+### Endpoint inventory
 
----
+**Auth** `/auth` — register · login · refresh · logout · me (GET/PATCH) ·
+change-password · forgot-password · reset-password
 
-## 2. Decisions — resolved
+**Records** `/records` — upload · list · get · download · verify · history ·
+update · delete · access · share · unshare
 
-The original brief contained six redundancies or unassigned items. All are now
-settled; the rationale is kept here because it belongs in the report.
+**Patient** `/patients/me` — dashboard · grants · wallet
 
-- [x] **Formik vs React Hook Form** → **React Hook Form + Yup**. Lighter, fewer re-renders, and Formik is effectively in maintenance mode. Formik dropped.
-- [x] **Ganache vs Hardhat Network** → **Hardhat Network only**. Ganache was sunset by Truffle/ConsenSys in 2023; Hardhat gives the same local chain plus Solidity `console.log` and stack traces. Ganache dropped.
-- [x] **Chart library** → **Recharts**. The UI brief required charts but named no library.
-- [x] **Appointments scope** → in scope, slotted as **Module 6b**. Still the single biggest scope cut available if time runs short.
-- [x] **Wallet model** → **custodial identity + patient-signed grants.** Each user gets a deterministic address derived from a server seed, so records can be anchored before anyone installs MetaMask. Those addresses never sign and never need gas. Patients who link a real wallet sign their own grants; `CUSTODIAN_ROLE` covers everyone else and is separately revocable. See `docs/blockchain.md`.
-- [ ] **Refresh-token transport** — the only one still open, and it is not blocking. The brief lists refresh tokens, `cookie-parser` *and* "CSRF considerations", which cohere only if refresh tokens live in an httpOnly cookie. Recommended: access token in memory (Bearer), refresh token in an httpOnly `SameSite=Strict` cookie, plus a CSRF token on the refresh route. Decide before Module 7, since it shapes the Axios client.
+**Doctor** `/doctors` — directory · me/dashboard · me/patients · me/records ·
+me/diagnoses · records/:id/diagnoses (GET/POST) · patients/:id/prescriptions
 
-Already resolved before this plan existed:
+**Appointments** `/appointments` — create · list · get · confirm · cancel ·
+complete · no-show
 
-- ~~Separate `Patients` / `Doctors` / `Admins` collections~~ → unified into one `User` model with `role` + `patientProfile` / `doctorProfile` subdocuments.
+**Notifications** `/notifications` — list · unread-count · read · read-all
 
----
+**Admin** `/admin` — stats · users · users/:id · users/:id/status · doctors ·
+doctors/:id/verify · doctors/:id/reject · audit-logs · audit-summary ·
+blockchain/transactions
 
-## 3. Blockers — cleared
-
-- [x] **Git installed and repository initialised** — Git 2.55 installed via winget; `git init` done, first commit made. Verified before committing that `backend/.env`, `node_modules/`, `.local/` and the blockchain build output are all ignored, and that no key material appears in the staged diff.
-- [x] **Root `README.md`** — architecture, prerequisites, quick start, security table, API summary, module status.
-- [ ] **Back up `FILE_ENCRYPTION_KEY` and `CUSTODIAL_WALLET_SEED`** `S` — **still outstanding, and it is on you.** Both live only in `backend/.env`, which is git-ignored by design. Losing the first makes every stored record permanently unreadable; losing the second orphans every user's on-chain identity. Copy them somewhere outside the project folder today.
-- [x] **ESLint + Prettier** — configured for the backend (`npm run lint`, `npm run format`), currently clean. The rule set targets real defects rather than formatting, which Prettier owns.
+**Health** `/health` — DB, IPFS driver and chain status in one call
 
 ---
 
-## 4. Module 4 — Smart contract, Hardhat, ethers.js — **COMPLETE**
+## 2. Outstanding — yours, not the code's
 
-- [x] `blockchain/` workspace: Hardhat 2.29, OpenZeppelin 5, ethers v6, Solidity 0.8.24
-- [x] `contracts/TelemedicineRecords.sol` — registration, admin verification, `anchorRecord`, `grantAccess` / `grantAccessFor` / `revokeAccess`, `hasAccess` oracle, `logAccess`, `verifyRecordIntegrity`, full view surface
-- [x] `AccessControl` + `Pausable` + `ReentrancyGuard`, custom errors, events on every state change
-- [x] `test/TelemedicineRecords.test.js` — **38 tests passing**
-- [x] `scripts/deploy.js` — writes address + ABI straight into the backend, so a deployment self-wires
-- [x] `backend/src/config/blockchain.js`, `services/blockchainService.js`, `models/BlockchainTransaction.js`
-- [x] Anchoring wired into the upload flow; `blockchain.status` moves `pending → confirmed`
-- [x] `npm run backfill:anchors` for records uploaded before the chain existed
-- [x] `GET /api/v1/health` now reports chain connectivity, block height and record count
-- [x] On-chain integrity check surfaced in `GET /records/:id/verify`
-
-**Two bugs found and fixed during this module** (both worth writing up):
-
-1. **Nonce collision.** One registrar key signs every write; concurrent uploads read the same pending nonce and the second was rejected with *"nonce has already been used"*, silently downgrading records to `failed`. Fixed by serialising submissions behind a queue with an in-process nonce counter. Regression test: *"anchors concurrent uploads without a nonce collision"*.
-2. **Failure logs silently dropped.** The full ethers error embeds the raw signed transaction (thousands of characters) and was written into a field capped at 1000, so the validation error was swallowed by the logger's own catch — failures left no trace at all. Errors are now truncated before logging.
-
-**Not carried over from the original scope:** Hardhat Ignition. `scripts/deploy.js`
-already handles deployment and artifact publication; Ignition would add a second
-way to do the same thing.
+- [ ] **Back up `FILE_ENCRYPTION_KEY` and `CUSTODIAL_WALLET_SEED`** from
+      `backend/.env`. They are git-ignored by design, so they exist in exactly
+      one place on disk. Losing the first makes every stored record permanently
+      unreadable; losing the second orphans every user's on-chain identity.
+      **Copy them somewhere outside the project folder.**
+- [ ] Change the seeded admin password — the default is in the repository.
+- [ ] Capture screenshots into `docs/screenshots/` for the report appendix.
+- [ ] Render the Mermaid diagrams to PNG/SVG for Word/LaTeX (see
+      `docs/README.md`).
 
 ---
 
-## 5. Module 5 — Patient sharing + blockchain history `M`
+## 3. Known limitations, stated deliberately
 
-- [ ] `models/AccessPermission.js` — record, patient, doctor, grantedAt, expiresAt, revokedAt, on-chain tx refs
-- [ ] `repositories/accessPermissionRepository.js`
-- [ ] `services/accessControlService.js` — dual check: MongoDB row **and** on-chain `hasAccess`
-- [ ] `POST /api/v1/records/:recordId/share` — grant a doctor access (on-chain + off-chain)
-- [ ] `DELETE /api/v1/records/:recordId/share/:doctorId` — revoke
-- [ ] `GET /api/v1/records/:recordId/access` — who can currently see this
-- [ ] `GET /api/v1/records/:recordId/history` — on-chain event timeline
-- [ ] `GET /api/v1/patients/me/blockchain-history` — all anchoring + access events
-- [ ] Extend `medicalRecordService` authorisation so a granted doctor passes `assertCanReadContent`
-- [ ] Expiring grants — background sweep or lazy check on read
-- [ ] Integration tests: grant → doctor reads → revoke → doctor gets 403
+Each of these is documented rather than hidden, and each has a prepared answer in
+`docs/viva-questions.md`.
 
----
-
-## 6. Module 6 — Doctor clinical workflows `M`
-
-- [ ] `GET /api/v1/doctors/me/patients` — patients who have shared with this doctor
-- [ ] `GET /api/v1/doctors/me/records` — all records shared with this doctor
-- [ ] `GET /api/v1/records/:recordId/download` — extend to granted doctors
-- [ ] `models/Diagnosis.js` + create/list endpoints, linked to a record
-- [ ] Prescription upload — reuses the M3 encrypt→IPFS→anchor pipeline with `recordType: prescription`, `uploadedBy: doctor`
-- [ ] Allow verified doctors to upload **for** a patient (currently patient-only by design)
-- [ ] `requireVerifiedDoctor` on every route here
-- [ ] Integration tests: unverified doctor blocked, non-granted doctor blocked
-
-### Module 6b — Appointments `M` *(unassigned in the original plan — confirm scope)*
-
-- [ ] `models/Appointment.js` — patient, doctor, slot, status, reason, notes
-- [ ] Patient: request, list, cancel
-- [ ] Doctor: list, accept/reject, complete, add notes
-- [ ] Double-booking prevention (unique index on doctor + slot)
-- [ ] Status lifecycle: `requested → confirmed → completed | cancelled | no_show`
+| Limitation | Detail | Where discussed |
+| --- | --- | --- |
+| Encryption is server-side, not end-to-end | The server holds the master key and sees plaintext in memory. A compromised server compromises confidentiality. | Q10 |
+| Key loss is unrecoverable | No recovery path for `FILE_ENCRYPTION_KEY`, by design. | Q7 |
+| MIME allow-list trusts `Content-Type` | Magic-byte sniffing would be stronger. Mitigated: files are encrypted, never executed, served `nosniff`. | Q29 |
+| Local CIDs differ from Kubo's for large files | Valid CIDv1 raw+sha256, but IPFS chunks above 256 KiB into a UnixFS DAG. | Q38 |
+| Backend does not scale horizontally yet | The nonce counter is in-process; two instances on one registrar key would collide. | Q37 |
+| Rate limiting is per-process | `express-rate-limit` uses in-memory counters; needs Redis behind multiple instances. | deployment-guide §0 |
+| Custodial grants weaken the ownership claim | Most grants are platform-signed. Mitigated: separate revocable role, `custodial=true` on-chain. | Q12, Q40 |
+| M1–M2 controllers bypass repositories | `authController` and `adminController` still call Mongoose directly. Inconsistent with M3+. | Q20 |
+| No frontend component tests | UI verified by build plus manual walkthrough. | testing-guide |
+| Coverage not instrumented | No c8/nyc configured. | testing-guide |
+| No mail transport | Reset links are written to the application log. | authController |
 
 ---
 
-## 7. Module 7 — React foundation `L`
+## 4. Optional next steps
 
-- [ ] Vite + React scaffold in `frontend/`
-- [ ] Folder structure per brief: `components/{common,layout,forms,tables,cards,buttons,sidebar,navbar}`, `pages/`, `hooks/`, `context/`, `services/`, `utils/`, `routes/`, `styles/`
-- [ ] Axios client with interceptors (attach token, handle 401, refresh flow)
-- [ ] `AuthContext` + `useAuth`
-- [ ] `ProtectedRoute` / `RoleRoute` guards
-- [ ] Bootstrap 5 theme, healthcare palette, dark-mode CSS variables
-- [ ] Layout shell: sidebar, navbar, breadcrumbs
-- [ ] React Toastify, React Icons
-- [ ] Global `ErrorBoundary`, loading skeletons, 404 page
-- [ ] Public pages: Home, About, Contact
-- [ ] Auth pages: Login, Register (patient + doctor variants), Forgot Password
+Not required for submission; listed in rough order of value.
 
----
-
-## 8. Module 8 — Patient UI `L`
-
-- [ ] Dashboard: record counts, recent uploads, pending grants, blockchain status tiles
-- [ ] Upload form with drag-and-drop, client-side type/size validation, progress
-- [ ] Record list: filter, search, sort, paginate
-- [ ] Record detail: metadata, integrity badge, on-chain proof link
-- [ ] Share modal: pick a verified doctor, set expiry, MetaMask signature
-- [ ] Access management: active grants, revoke
-- [ ] Blockchain history timeline
-- [ ] MetaMask connect + network guard
-- [ ] Profile and settings
-
----
-
-## 9. Module 9 — Doctor UI `M`
-
-- [ ] Dashboard: shared patients, today's appointments, pending reviews
-- [ ] Shared patient list and record viewer
-- [ ] Diagnosis form
-- [ ] Prescription upload
-- [ ] Appointment management
-- [ ] Verification-status banner for unverified doctors
-- [ ] Profile
-
----
-
-## 10. Module 10 — Admin UI `M`
-
-- [ ] Dashboard with analytics — users by role, uploads over time, verification queue (Recharts)
-- [ ] Doctor verification queue: review, verify, reject with reason
-- [ ] User management: search, filter, activate/deactivate
-- [ ] Blockchain transaction explorer
-- [ ] Audit log viewer with filters
-- [ ] System settings page
-
----
-
-## 11. Module 11 — Hardening, docs, deployment `L`
-
-### Cross-cutting features still missing
-
-- [ ] **Forgot / reset password** — in the brief, owned by no module. Token model, email or console transport, reset endpoints, UI
-- [ ] **Refresh tokens** — per the decision in §2
-- [ ] **`models/AuditLog.js` + audit middleware** — the brief requires an audit trail; nothing writes one today
-- [ ] **`models/Notification.js`** + endpoints + UI bell
-- [ ] **Sorting** — `pagination.js` hardcodes `createdAt: -1`; the brief asks for sorting. Add a whitelisted `sort` query param
-- [ ] **Structured logging** — `logs/` is in the brief's structure but Morgan only writes to stdout. Add Winston with rotation
-- [ ] **Migrate M1–M2 controllers onto repositories** — `authController` and `adminController` still call Mongoose directly, inconsistent with M3
-
-### Testing
-
-- [ ] Unit tests: `encryptionService`, `cid`, `hash`, `pagination`, access rules
-- [ ] Integration tests for auth and admin (only records are covered today)
-- [ ] Smart contract tests (M4)
-- [ ] Frontend component tests
-- [ ] Postman collection covering every endpoint
-
-### Documentation
-
-- [ ] README (moved to §3 — do it early)
-- [ ] Full API documentation (only records documented today)
-- [ ] ER diagram
-- [ ] DFD (levels 0 and 1)
-- [ ] Class diagram
-- [ ] Sequence diagrams — upload, grant access, doctor read
-- [ ] Component diagram
-- [ ] Installation guide
-- [ ] Deployment guide
-- [ ] Testing guide
-- [ ] Viva question bank
-- [ ] IEEE report content
-- [ ] `docs/screenshots/`
-
-### Production hardening
-
+- [ ] Frontend component tests (Vitest + React Testing Library)
+- [ ] Coverage reporting (`c8`)
+- [ ] Migrate `authController` / `adminController` onto repositories
+- [ ] Magic-byte file-type sniffing
+- [ ] Deploy to Sepolia and record the address in the report
 - [ ] Switch `IPFS_DRIVER=pinata` and verify against real IPFS
-- [ ] Deploy the contract to a public testnet (Sepolia) and record the address
-- [ ] Per-route rate limits (auth and upload are stricter than reads)
-- [ ] Helmet CSP tuned for the frontend
-- [ ] Responsive pass, accessibility pass
-- [ ] Seed script for demo data
+- [ ] SMTP transport for password-reset emails
+- [ ] Redis-backed rate limiting
+- [ ] Docker Compose for one-command startup
+- [ ] Accessibility audit (axe) and a keyboard-only pass
 
 ---
 
-## 12. Suggested order
+## 5. Running it
 
-```
-Git + README                   ✔ done
-Module 4  contract + anchoring ✔ done
-        ↓
-Module 5  sharing                     ← NEXT. unlocks all doctor work
-        ↓
-Module 6  doctor workflows  (+6b appointments if in scope)
-        ↓
-Module 7  React foundation            ← nothing UI ships before this
-        ↓
-Modules 8, 9, 10  dashboards          ← parallelisable if you have a teammate
-        ↓
-Module 11 hardening + docs            ← start docs earlier; do not leave to the end
-```
-
-**Two warnings from experience:**
-
-1. Do not leave §11's documentation to the end. Write each diagram as you finish
-   the module it describes, while the design is still in your head.
-2. Module 4 is the highest-risk item — contract bugs are expensive to find late,
-   and the entire project's novelty rests on it. Budget more time than feels
-   necessary and write the contract tests *first*.
-
----
-
-## 13. Architecture reference
-
-- Layered: `routes → validators → controllers → services → repositories → MongoDB`
-- Medical files are AES-256-GCM encrypted before leaving the server. A random
-  per-file content key is wrapped with `FILE_ENCRYPTION_KEY`; only the wrapped
-  key is persisted. See `docs/api/medical-records.md`.
-- `integrity.fileHash` is the SHA-256 of the **plaintext** — the value Module 4
-  anchors on-chain.
-- IPFS access goes through a factory (`backend/src/services/ipfs/`) with two
-  interchangeable drivers: `local` (on-disk, content-addressed, no credentials)
-  and `pinata` (real IPFS). Selected by `IPFS_DRIVER`.
-- Admins can read record metadata and verify integrity, but never plaintext.
-
-## 14. Running locally
+Five terminals. Full detail in [`docs/installation-guide.md`](docs/installation-guide.md).
 
 ```bash
-# 1. MongoDB (bundled)
-.local/mongodb/mongodb-win32-x86_64-windows-8.3.4/bin/mongod.exe `
+# 1  MongoDB
+.local/mongodb/mongodb-win32-x86_64-windows-8.3.4/bin/mongod.exe \
   --dbpath .local/mongodb/data --port 27017 --logpath .local/mongodb/mongod.log
 
-# 2. API
-cd backend
-npm install
-npm run seed:admin        # first run only
-npm run dev               # http://localhost:5000
+# 2  Local chain
+cd blockchain && npx hardhat node
 
-# 3. Tests (API must be running)
-npm run test:integration
+# 3  Deploy (exits when done)
+cd blockchain && npx hardhat run scripts/deploy.js --network localhost
+
+# 4  API — set CONTRACT_ADDRESS + BLOCKCHAIN_ENABLED=true in backend/.env first
+cd backend && npm run seed:admin && npm run dev
+
+# 5  Frontend
+cd frontend && npm run dev            # http://localhost:3000
 ```
 
-## 15. Endpoint inventory
+Sign in as `admin@example.com` / `Admin@12345`.
 
-**Auth** — `POST /auth/register` · `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` · `PATCH /auth/me` · `PATCH /auth/change-password`
+```bash
+# Tests
+cd backend    && npm run test:all     # 106
+cd blockchain && npx hardhat test     # 38
+```
 
-**Admin** — `GET /admin/users` · `GET /admin/users/:userId` · `PATCH /admin/users/:userId/status` · `GET /admin/doctors` · `PATCH /admin/doctors/:doctorId/verify` · `PATCH /admin/doctors/:doctorId/reject`
+---
 
-**Records** — `POST /records` · `GET /records` · `GET /records/:recordId` · `GET /records/:recordId/download` · `GET /records/:recordId/verify` · `PATCH /records/:recordId` · `DELETE /records/:recordId`
+## 6. Architecture summary
 
-All prefixed `/api/v1`.
+`routes → validators → controller → service → repository → model`, dependencies
+pointing downward only.
+
+- Files are AES-256-GCM encrypted before leaving the server. A random per-file
+  content key is wrapped with `FILE_ENCRYPTION_KEY`; only the wrapped form is
+  persisted.
+- `integrity.fileHash` is SHA-256 of the **plaintext** — the value anchored
+  on-chain, and the one a patient can recompute from their own copy.
+- IPFS goes through a factory with two interchangeable drivers (`local`,
+  `pinata`) selected by `IPFS_DRIVER`.
+- Authorisation is checked twice: MongoDB decides, the chain may veto. An
+  unreachable chain does not lock clinicians out.
+- Administrators can read metadata and verify integrity, but never a clinical
+  file.
+- Anchoring never fails an upload; failures leave `blockchain.status` recoverable
+  via `npm run backfill:anchors`.
+
+## 7. Decisions made along the way
+
+Recorded because they belong in the report's design-rationale section.
+
+- **React Hook Form over Formik** — fewer re-renders; Formik is effectively in
+  maintenance mode.
+- **Hardhat Network over Ganache** — Ganache was sunset by Truffle in 2023.
+- **Recharts** for charts (the brief required charts but named no library).
+- **Refresh tokens in httpOnly `SameSite=Strict` cookies**, access token in
+  memory — an XSS payload can then steal at most a short-lived token.
+- **Custodial identity addresses** derived from a server seed, so records can be
+  anchored before a patient installs MetaMask. They never sign and never need gas.
+- **One `User` collection** with a role discriminator rather than three
+  collections.
+- **Hardhat Ignition dropped** — `scripts/deploy.js` already deploys and
+  publishes the ABI; Ignition would be a second way to do the same job.

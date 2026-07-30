@@ -261,7 +261,17 @@ Every response uses the same envelope:
 { "status": "success", "message": "...", "data": { } }
 ```
 
-Full reference: [`docs/api/medical-records.md`](docs/api/medical-records.md)
+Full reference: [`docs/api/medical-records.md`](docs/api/medical-records.md) ·
+Importable Postman collection: [`docs/postman-collection.json`](docs/postman-collection.json)
+
+## Documentation
+
+Everything is indexed in [`docs/README.md`](docs/README.md):
+
+- **Guides** — [installation](docs/installation-guide.md) · [deployment](docs/deployment-guide.md) · [testing](docs/testing-guide.md)
+- **Diagrams** (Mermaid) — [ER](docs/diagrams/er-diagram.md) · [DFD](docs/diagrams/dfd.md) · [class](docs/diagrams/class-diagram.md) · [sequence](docs/diagrams/sequence-diagrams.md) · [component](docs/diagrams/component-diagram.md)
+- **Submission** — [IEEE report content](docs/ieee-report-content.md) · [viva question bank](docs/viva-questions.md)
+- **Blockchain layer** — [docs/blockchain.md](docs/blockchain.md)
 
 ---
 
@@ -278,7 +288,10 @@ Full reference: [`docs/api/medical-records.md`](docs/api/medical-records.md)
 | 6b | Appointments | Complete |
 | 7 | React foundation | Complete |
 | 8–10 | Patient / doctor / admin dashboards | Complete |
-| 11 | Hardening, documentation, deployment | In progress |
+| 11 | Hardening, documentation, deployment | Complete |
+
+**All 11 modules delivered.** 144 automated tests: 32 unit, 74 API integration,
+38 smart contract.
 
 Detailed task breakdown: [`PROJECT_TODO.md`](PROJECT_TODO.md)
 
@@ -287,8 +300,11 @@ Detailed task breakdown: [`PROJECT_TODO.md`](PROJECT_TODO.md)
 ## Testing
 
 ```bash
-cd backend && npm run test:integration    # API integration tests
-cd blockchain && npx hardhat test         # smart contract tests
+cd backend     && npm run test:unit          # 32 — no services needed
+cd backend     && npm run test:integration   # 74 — needs API + DB running
+cd backend     && npm run test:all           # 106
+cd blockchain  && npx hardhat test           # 38 — spins up its own chain
+cd backend     && npm run lint               # currently clean
 ```
 
 The Module 3 suite covers authentication, the MIME allow-list, encryption at

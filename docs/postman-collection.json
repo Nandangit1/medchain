@@ -1,0 +1,892 @@
+{
+  "info": {
+    "name": "Blockchain Telemedicine API",
+    "description": "Complete API for the Blockchain-Based Secure Telemedicine System.\n\n## Setup\n\n1. Start MongoDB, the Hardhat node, and the backend (see docs/installation-guide.md).\n2. Select the \"Local\" environment.\n3. Run `Auth > Login (admin)` first — the test script stores the token automatically.\n\nTokens are captured into collection variables by the test scripts, so requests can be run in order without copying anything by hand.\n\n## Variables\n\n- `baseUrl` — API root, default http://localhost:5000/api/v1\n- `adminToken`, `patientToken`, `doctorToken` — set automatically on login/register\n- `recordId`, `doctorId`, `patientId`, `appointmentId` — set automatically",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000/api/v1" },
+    { "key": "adminEmail", "value": "admin@example.com" },
+    { "key": "adminPassword", "value": "Admin@12345" },
+    { "key": "adminToken", "value": "" },
+    { "key": "patientToken", "value": "" },
+    { "key": "doctorToken", "value": "" },
+    { "key": "patientId", "value": "" },
+    { "key": "doctorId", "value": "" },
+    { "key": "recordId", "value": "" },
+    { "key": "appointmentId", "value": "" },
+    { "key": "runId", "value": "1" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Root",
+          "request": { "method": "GET", "url": "{{baseUrl}}/../" }
+        },
+        {
+          "name": "Health check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('database connected', () => pm.expect(d.database).to.eql('connected'));",
+                  "console.log('IPFS driver:', d.ipfs.driver);",
+                  "console.log('Blockchain:', JSON.stringify(d.blockchain));"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/health" }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('adminToken', pm.response.json().data.token);",
+                  "pm.collectionVariables.set('runId', Date.now().toString().slice(-6));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "Register patient",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data;",
+                  "pm.collectionVariables.set('patientToken', d.token);",
+                  "pm.collectionVariables.set('patientId', d.user._id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Patient\",\n  \"email\": \"patient{{runId}}@example.com\",\n  \"password\": \"Str0ng!Passw0rd\",\n  \"role\": \"patient\",\n  \"gender\": \"male\",\n  \"patientProfile\": { \"bloodGroup\": \"O+\" }\n}"
+            },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "Register doctor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data;",
+                  "pm.collectionVariables.set('doctorToken', d.token);",
+                  "pm.collectionVariables.set('doctorId', d.user._id);",
+                  "pm.test('starts unverified', () => pm.expect(d.user.doctorProfile.verificationStatus).to.eql('pending'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Doctor\",\n  \"email\": \"doctor{{runId}}@example.com\",\n  \"password\": \"Str0ng!Passw0rd\",\n  \"role\": \"doctor\",\n  \"doctorProfile\": {\n    \"specialization\": \"General Medicine\",\n    \"medicalLicenseNumber\": \"LIC-{{runId}}\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "Get me",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": "{{baseUrl}}/auth/me"
+          }
+        },
+        {
+          "name": "Update me",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{patientToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Test Patient Updated\",\n  \"phone\": \"9876543210\"\n}" },
+            "url": "{{baseUrl}}/auth/me"
+          }
+        },
+        {
+          "name": "Refresh session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('patientToken', pm.response.json().data.token);",
+                  "pm.test('rotates the cookie', () => pm.expect(pm.response.headers.get('set-cookie')).to.include('refreshToken'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Uses the httpOnly refresh cookie Postman stored at login. Replaying a spent token revokes every session for that user.",
+            "url": "{{baseUrl}}/auth/refresh"
+          }
+        },
+        {
+          "name": "Forgot password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "description": "Always returns the same response so it cannot be used to enumerate registered addresses. In development the reset link is returned in the body.",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"patient{{runId}}@example.com\"\n}" },
+            "url": "{{baseUrl}}/auth/forgot-password"
+          }
+        },
+        {
+          "name": "Reset password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "description": "Paste the token from the forgot-password response. Single use; revokes all sessions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"PASTE_TOKEN_HERE\",\n  \"newPassword\": \"N3w!Passw0rd\",\n  \"newPasswordConfirm\": \"N3w!Passw0rd\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/reset-password"
+          }
+        },
+        {
+          "name": "Change password",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{patientToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"Str0ng!Passw0rd\",\n  \"newPassword\": \"Ch4nged!Pass\",\n  \"newPasswordConfirm\": \"Ch4nged!Pass\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/change-password"
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": "{{baseUrl}}/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Platform stats",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": "{{baseUrl}}/admin/stats"
+          }
+        },
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users?page=1&limit=10&role=patient",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "users"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" },
+                { "key": "role", "value": "patient" },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "isActive", "value": "true", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List doctors (pending)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/doctors?verificationStatus=pending",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "doctors"],
+              "query": [{ "key": "verificationStatus", "value": "pending" }]
+            }
+          }
+        },
+        {
+          "name": "Verify doctor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('now verified', () => pm.expect(d.doctor.doctorProfile.verificationStatus).to.eql('verified'));",
+                  "if (d.onChain) console.log('Mirrored on-chain:', JSON.stringify(d.onChain));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": "{{baseUrl}}/admin/doctors/{{doctorId}}/verify"
+          }
+        },
+        {
+          "name": "Reject doctor",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"rejectionReason\": \"Licence could not be verified with the medical council.\"\n}" },
+            "url": "{{baseUrl}}/admin/doctors/{{doctorId}}/reject"
+          }
+        },
+        {
+          "name": "Deactivate user",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"isActive\": false\n}" },
+            "url": "{{baseUrl}}/admin/users/{{patientId}}/status"
+          }
+        },
+        {
+          "name": "Audit log",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/audit-logs?limit=20&sort=-createdAt",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "audit-logs"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "sort", "value": "-createdAt" },
+                { "key": "category", "value": "auth", "disabled": true },
+                { "key": "outcome", "value": "failure", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Audit summary",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": "{{baseUrl}}/admin/audit-summary?days=30"
+          }
+        },
+        {
+          "name": "Blockchain transactions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/blockchain/transactions?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "blockchain", "transactions"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "type", "value": "anchor_record", "disabled": true },
+                { "key": "status", "value": "failed", "disabled": true }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Records",
+      "item": [
+        {
+          "name": "Upload record",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const r = pm.response.json().data.record;",
+                  "pm.collectionVariables.set('recordId', r._id);",
+                  "pm.test('encryption never exposed', () => pm.expect(r.encryption).to.be.undefined);",
+                  "pm.test('hash recorded', () => pm.expect(r.integrity.fileHash).to.match(/^[0-9a-f]{64}$/));",
+                  "console.log('CID:', r.storage.cid, '| anchor:', r.blockchain.status);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "description": "multipart/form-data. Select a PDF for the `file` field before sending.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [], "description": "PDF, PNG, JPEG, WebP, TIFF, DICOM or TXT. Max 10 MB." },
+                { "key": "title", "value": "Complete Blood Count", "type": "text" },
+                { "key": "recordType", "value": "lab_report", "type": "text" },
+                { "key": "description", "value": "Routine annual blood panel.", "type": "text" },
+                { "key": "tags", "value": "blood,routine", "type": "text" }
+              ]
+            },
+            "url": "{{baseUrl}}/records"
+          }
+        },
+        {
+          "name": "List records",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/records?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["records"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" },
+                { "key": "search", "value": "blood", "disabled": true },
+                { "key": "recordType", "value": "lab_report", "disabled": true },
+                { "key": "from", "value": "2026-01-01", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get record",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": "{{baseUrl}}/records/{{recordId}}"
+          }
+        },
+        {
+          "name": "Download record",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "description": "Returns the decrypted file, not JSON. Integrity is re-verified before anything is streamed.",
+            "url": "{{baseUrl}}/records/{{recordId}}/download"
+          }
+        },
+        {
+          "name": "Verify integrity",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const rep = pm.response.json().data.report;",
+                  "pm.test('integrity verified', () => pm.expect(rep.integrityVerified).to.be.true);",
+                  "if (rep.blockchain.anchored) pm.test('chain agrees', () => pm.expect(rep.blockchain.hashMatchesChain).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": "{{baseUrl}}/records/{{recordId}}/verify"
+          }
+        },
+        {
+          "name": "Blockchain history",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "description": "Read from the contract's event log, not MongoDB.",
+            "url": "{{baseUrl}}/records/{{recordId}}/history"
+          }
+        },
+        {
+          "name": "Update metadata",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{patientToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "description": "Only descriptive fields are mutable. The file, hash, CID and envelope are immutable.",
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Complete Blood Count (revised)\",\n  \"status\": \"archived\"\n}" },
+            "url": "{{baseUrl}}/records/{{recordId}}"
+          }
+        },
+        {
+          "name": "Delete record",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "description": "Soft delete. The blob is unpinned; the on-chain anchor and audit trail remain.",
+            "url": "{{baseUrl}}/records/{{recordId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sharing",
+      "item": [
+        {
+          "name": "Doctor directory",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "description": "Verified doctors only. Readable by any signed-in user, since a patient must find a doctor before sharing.",
+            "url": "{{baseUrl}}/doctors/directory?limit=20"
+          }
+        },
+        {
+          "name": "Grant access",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const p = pm.response.json().data.permission;",
+                  "pm.test('grant is live', () => pm.expect(p.live).to.be.true);",
+                  "console.log('grant tx:', p.grantTx.status, p.grantTx.txHash);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{patientToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"doctorId\": \"{{doctorId}}\",\n  \"note\": \"Second opinion\"\n}" },
+            "url": "{{baseUrl}}/records/{{recordId}}/share"
+          }
+        },
+        {
+          "name": "List record access",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": "{{baseUrl}}/records/{{recordId}}/access"
+          }
+        },
+        {
+          "name": "Revoke access",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "description": "Takes effect immediately. The row is retained with revokedAt set, so history survives.",
+            "url": "{{baseUrl}}/records/{{recordId}}/share/{{doctorId}}"
+          }
+        },
+        {
+          "name": "My grants",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": "{{baseUrl}}/patients/me/grants?limit=50"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Patient",
+      "item": [
+        {
+          "name": "Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": "{{baseUrl}}/patients/me/dashboard"
+          }
+        },
+        {
+          "name": "Wallet",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": "{{baseUrl}}/patients/me/wallet"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Doctor",
+      "item": [
+        {
+          "name": "Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{doctorToken}}" }],
+            "url": "{{baseUrl}}/doctors/me/dashboard"
+          }
+        },
+        {
+          "name": "My patients",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{doctorToken}}" }],
+            "url": "{{baseUrl}}/doctors/me/patients"
+          }
+        },
+        {
+          "name": "Shared records",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{doctorToken}}" }],
+            "description": "Scoped server-side by live grant, so a revoked record disappears.",
+            "url": "{{baseUrl}}/doctors/me/records?limit=20"
+          }
+        },
+        {
+          "name": "Create diagnosis",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{doctorToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"summary\": \"Mild iron deficiency anaemia\",\n  \"details\": \"Haemoglobin below reference range. Recommend oral iron.\",\n  \"icdCode\": \"D50.9\",\n  \"severity\": \"moderate\"\n}"
+            },
+            "url": "{{baseUrl}}/doctors/records/{{recordId}}/diagnoses"
+          }
+        },
+        {
+          "name": "Record diagnoses",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{doctorToken}}" }],
+            "url": "{{baseUrl}}/doctors/records/{{recordId}}/diagnoses"
+          }
+        },
+        {
+          "name": "My diagnoses",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{doctorToken}}" }],
+            "url": "{{baseUrl}}/doctors/me/diagnoses?limit=20"
+          }
+        },
+        {
+          "name": "Upload prescription",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{doctorToken}}" }],
+            "description": "Reuses the encrypt/pin/anchor pipeline. Requires an existing share for this patient.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [] },
+                { "key": "title", "value": "Ferrous sulphate 200mg", "type": "text" },
+                { "key": "description", "value": "One tablet twice daily for 8 weeks.", "type": "text" }
+              ]
+            },
+            "url": "{{baseUrl}}/doctors/patients/{{patientId}}/prescriptions"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Appointments",
+      "item": [
+        {
+          "name": "Request appointment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('appointmentId', pm.response.json().data.appointment._id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{patientToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "description": "scheduledFor must be in the future. Double-booking a doctor's slot returns 409.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doctorId\": \"{{doctorId}}\",\n  \"scheduledFor\": \"2026-12-01T10:00:00.000Z\",\n  \"mode\": \"video\",\n  \"reason\": \"Follow-up on blood test results\"\n}"
+            },
+            "url": "{{baseUrl}}/appointments"
+          }
+        },
+        {
+          "name": "List appointments",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": "{{baseUrl}}/appointments?limit=20&upcoming=true"
+          }
+        },
+        {
+          "name": "Confirm (doctor)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{doctorToken}}" }],
+            "url": "{{baseUrl}}/appointments/{{appointmentId}}/confirm"
+          }
+        },
+        {
+          "name": "Complete (doctor)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{doctorToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "description": "Only valid from 'confirmed'. Illegal transitions return 400.",
+            "body": { "mode": "raw", "raw": "{\n  \"doctorNotes\": \"Patient responding well to iron therapy.\"\n}" },
+            "url": "{{baseUrl}}/appointments/{{appointmentId}}/complete"
+          }
+        },
+        {
+          "name": "Cancel",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{patientToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Unable to attend\"\n}" },
+            "url": "{{baseUrl}}/appointments/{{appointmentId}}/cancel"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "List",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{doctorToken}}" }],
+            "url": "{{baseUrl}}/notifications?limit=20"
+          }
+        },
+        {
+          "name": "Unread count",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{doctorToken}}" }],
+            "url": "{{baseUrl}}/notifications/unread-count"
+          }
+        },
+        {
+          "name": "Mark all read",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{doctorToken}}" }],
+            "url": "{{baseUrl}}/notifications/read-all"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Negative tests",
+      "description": "The requests that prove the security model. Each should FAIL with the stated status.",
+      "item": [
+        {
+          "name": "Unauthenticated upload → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "body": { "mode": "formdata", "formdata": [{ "key": "title", "value": "No token", "type": "text" }] },
+            "url": "{{baseUrl}}/records"
+          }
+        },
+        {
+          "name": "Admin downloads a file → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('403 Forbidden', () => pm.response.to.have.status(403));",
+                  "pm.test('explains why', () => pm.expect(pm.response.json().message).to.include('Administrator'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "description": "Administrators may read metadata and verify integrity, never the clinical file.",
+            "url": "{{baseUrl}}/records/{{recordId}}/download"
+          }
+        },
+        {
+          "name": "Doctor reads without a grant → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('403 Forbidden', () => pm.response.to.have.status(403));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{doctorToken}}" }],
+            "url": "{{baseUrl}}/records/{{recordId}}"
+          }
+        },
+        {
+          "name": "Patient reads the audit log → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('403 Forbidden', () => pm.response.to.have.status(403));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "url": "{{baseUrl}}/admin/audit-logs"
+          }
+        },
+        {
+          "name": "Duplicate upload → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('409 Conflict', () => pm.response.to.have.status(409));"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "description": "Re-send the exact file already uploaded.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [] },
+                { "key": "title", "value": "Duplicate attempt", "type": "text" },
+                { "key": "recordType", "value": "lab_report", "type": "text" }
+              ]
+            },
+            "url": "{{baseUrl}}/records"
+          }
+        },
+        {
+          "name": "Disallowed file type → 415",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('415 Unsupported Media Type', () => pm.response.to.have.status(415));"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{patientToken}}" }],
+            "description": "Attach an .exe or .zip. The allow-list rejects it.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [] },
+                { "key": "title", "value": "Malicious upload", "type": "text" },
+                { "key": "recordType", "value": "other", "type": "text" }
+              ]
+            },
+            "url": "{{baseUrl}}/records"
+          }
+        },
+        {
+          "name": "Share with unverified doctor → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('mentions verification', () => pm.expect(pm.response.json().message).to.match(/verified/i));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{patientToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "description": "Register a second doctor, do NOT verify them, and use that id here.",
+            "body": { "mode": "raw", "raw": "{\n  \"doctorId\": \"PASTE_UNVERIFIED_DOCTOR_ID\"\n}" },
+            "url": "{{baseUrl}}/records/{{recordId}}/share"
+          }
+        },
+        {
+          "name": "Refresh with no cookie → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Clear cookies in Postman before sending.",
+            "url": "{{baseUrl}}/auth/refresh"
+          }
+        }
+      ]
+    }
+  ]
+}
