@@ -161,21 +161,37 @@ until `npm run backfill:anchors` is run.
 cd frontend
 npm install
 cp .env.example .env
-npm run dev            # http://localhost
+npm run dev            # http://localhost:3000
 ```
 
-The dev server runs on port 80 and proxies `/api` to the backend, so the app is
-served from a single origin — no CORS, and `VITE_API_URL` stays relative.
+Open **http://localhost:3000**.
 
-**Optional — serve it as `medchain.local`:**
+The dev server proxies `/api` to the backend on port 5000, so the browser only
+ever talks to one origin. That is why `VITE_API_URL` is relative (`/api/v1`):
+no CORS preflights, and the httpOnly refresh cookie works without special
+cases.
+
+<details>
+<summary>Optional: run it as a single server, or as <code>medchain.local</code></summary>
+
+**Single server** — one process serves the built app and the API on port 80:
+
+```bash
+npm run build                      # from the repository root
+cd backend && npm run start:site   # http://localhost
+```
+
+**Custom hostname** — maps `medchain.local` to this machine. Needs
+Administrator rights because it edits the Windows hosts file:
 
 ```powershell
-# Administrator PowerShell, once
 powershell -ExecutionPolicy Bypass -File scripts\setup-hostname.ps1
 ```
 
-Then open **http://medchain.local**. `localhost` continues to work.
-Run the script with `-Remove` to undo.
+Undo with `-Remove`. `localhost` keeps working either way, so this step is
+entirely optional.
+
+</details>
 
 ### 5. Run the tests
 

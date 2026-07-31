@@ -8,7 +8,10 @@
     "compile": "hardhat compile",
     "node": "hardhat node",
     "deploy:local": "hardhat run scripts/deploy.js --network localhost",
-    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia"
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "//deploy:ignition": "Declarative deploy, then publish the address + ABI to the backend.",
+    "deploy:ignition": "hardhat ignition deploy ./ignition/modules/TelemedicineRecords.js --network localhost && hardhat run scripts/syncAbi.js --network localhost",
+    "sync:abi": "hardhat run scripts/syncAbi.js --network localhost"
   },
   "keywords": [],
   "author": "",

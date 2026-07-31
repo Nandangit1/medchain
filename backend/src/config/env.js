@@ -71,6 +71,12 @@ if (blockchainEnabled) {
   }
 }
 
+/** Parsed once: used both as the CORS allow-list and to derive APP_URL. */
+const corsOrigins = (process.env.CORS_ORIGIN || "http://localhost:3000,http://localhost")
+  .split(",")
+  .map((origin) => origin.trim().replace(/\/$/, ""))
+  .filter(Boolean);
+
 const env = {
   NODE_ENV: process.env.NODE_ENV || "development",
   PORT: Number(process.env.PORT || 5000),
@@ -82,11 +88,23 @@ const env = {
    * and a LAN address without reconfiguration. Kept as a raw string for logging;
    * `CORS_ORIGINS` below is the parsed form the CORS middleware uses.
    */
-  CORS_ORIGIN: process.env.CORS_ORIGIN || "http://medchain.local,http://localhost",
-  CORS_ORIGINS: (process.env.CORS_ORIGIN || "http://medchain.local,http://localhost")
-    .split(",")
-    .map((origin) => origin.trim().replace(/\/$/, ""))
-    .filter(Boolean),
+  CORS_ORIGIN: process.env.CORS_ORIGIN || "http://localhost:3000,http://localhost",
+  CORS_ORIGINS: corsOrigins,
+
+  /**
+   * Canonical public URL, used to build links that a USER will click —
+   * password-reset emails, for example.
+   *
+   * This is deliberately separate from the CORS allow-list. CORS_ORIGIN is a
+   * SET of permitted origins; a link needs exactly ONE. Deriving a link by
+   * interpolating the allow-list produces a malformed URL the moment more than
+   * one origin is configured, which is a bug that only shows up in the emails
+   * users receive.
+   *
+   * Defaults to the first allow-listed origin, which is correct for local
+   * development. Set APP_URL explicitly in production.
+   */
+  APP_URL: (process.env.APP_URL || corsOrigins[0] || "http://localhost:3000").replace(/\/$/, ""),
   ADMIN_NAME: process.env.ADMIN_NAME,
   ADMIN_EMAIL: process.env.ADMIN_EMAIL,
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,

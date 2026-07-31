@@ -108,14 +108,33 @@ Start a local chain (leave running):
 npx hardhat node
 ```
 
-In another terminal, deploy:
+In another terminal, deploy. Two supported paths — either is fine:
+
+**Script (simplest):**
 
 ```bash
 cd blockchain
 npx hardhat run scripts/deploy.js --network localhost
 ```
 
-The script prints the contract address and writes the address + ABI into
+**Hardhat Ignition (declarative, idempotent):**
+
+```bash
+cd blockchain
+npm run deploy:ignition
+```
+
+That runs the Ignition module and then `scripts/syncAbi.js`, which publishes the
+address and ABI to the backend. Ignition records what it has already deployed,
+so re-running it does not deploy a second copy — unlike the plain script, which
+deploys fresh every time. The individual commands, if you prefer them explicit:
+
+```bash
+npx hardhat ignition deploy ./ignition/modules/TelemedicineRecords.js --network localhost
+npx hardhat run scripts/syncAbi.js --network localhost
+```
+
+Either path prints the contract address and writes the address + ABI into
 `backend/src/config/contracts/TelemedicineRecords.json`, so no manual copying is
 needed. Update `backend/.env`:
 
@@ -149,41 +168,61 @@ npm run backfill:anchors
 cd frontend
 npm install
 cp .env.example .env
-npm run dev             # http://localhost
+npm run dev             # http://localhost:3000
 ```
 
-The dev server runs on port **80** and proxies `/api` to the Express backend, so
-the whole app is served from a single origin. That is why `VITE_API_URL` is
-relative (`/api/v1`): there are no CORS preflights, the httpOnly refresh cookie
-works without special cases, and the same build runs on any hostname.
-
-Open http://localhost and sign in as the seeded admin
+Open **http://localhost:3000** and sign in as the seeded admin
 (`admin@example.com` / `Admin@12345`), or register a patient.
 
-### Optional: use http://medchain.local instead of localhost
+The dev server proxies `/api` to the Express backend, so the whole app is served
+from a single origin. That is why `VITE_API_URL` is relative (`/api/v1`): there
+are no CORS preflights, the httpOnly refresh cookie works without special cases,
+and no API host is baked into the build.
 
-To give the app a real hostname, map `medchain.local` to this machine:
+Port 3000 is pinned with `strictPort: true`. If it were left to fall back,
+a port clash would silently move the app to 3001 and leave
+`http://localhost:3000` dead with nothing to explain why — so it now fails
+loudly instead.
+
+### Optional: single-server mode
+
+One process serving the built app and the API together, on port 80:
+
+```bash
+npm run build                       # from the repository root
+cd backend && npm run start:site    # http://localhost
+```
+
+This is what the Docker image and the Render blueprint run.
+
+### Optional: use http://medchain.local
+
+To give the app a hostname instead of `localhost`, map it to this machine.
+**This needs Administrator rights**, because the Windows hosts file lives under
+`C:\Windows\System32` and is writable only by administrators — it controls name
+resolution for the whole machine, so Windows guards it deliberately.
 
 ```powershell
 # Right-click PowerShell -> Run as Administrator
 powershell -ExecutionPolicy Bypass -File scripts\setup-hostname.ps1
 ```
 
-The script backs up the hosts file, adds two loopback entries, and flushes the
-DNS cache. Nothing is sent to the internet — the hosts file is simply consulted
-before DNS. Undo it at any time:
+The script backs up the hosts file first, adds two loopback entries, and flushes
+the DNS cache. Nothing is sent to the internet — the hosts file is simply
+consulted before DNS. Undo at any time:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\setup-hostname.ps1 -Remove
 ```
 
-Then open **http://medchain.local**.
+Then open **http://medchain.local:3000** (dev) or **http://medchain.local**
+(single-server mode).
 
 > Type the full URL including `http://`. Some browsers treat a bare hostname
-> with no `.com` as a search query and will show search results instead.
+> with no `.com` as a search query and show search results instead.
 
-`localhost` keeps working either way — both hostnames are in the Vite
-`allowedHosts` list and the backend `CORS_ORIGIN`.
+**This step is entirely optional.** `localhost` works without it — both
+hostnames are in the Vite `allowedHosts` list and the backend `CORS_ORIGIN`.
 
 ## 6. Verify the whole stack
 
@@ -202,7 +241,9 @@ Five terminals, in this order:
 | 2 | `blockchain` | `npx hardhat node` | 8545 |
 | 3 | `blockchain` | `npx hardhat run scripts/deploy.js --network localhost` | — |
 | 4 | `backend` | `npm run dev` | 5000 |
-| 5 | `frontend` | `npm run dev` | 80 |
+| 5 | `frontend` | `npm run dev` | **3000** |
+
+Then open **http://localhost:3000**.
 
 Terminal 3 exits after deploying.
 
@@ -215,7 +256,10 @@ Terminal 3 exits after deploying.
 | `EADDRINUSE :::5000` | API already running | Stop the other instance, or change `PORT` |
 | `MongooseServerSelectionError` | MongoDB not running | Start terminal 1 |
 | CORS error in the browser console | frontend origin not allow-listed | Add it to `CORS_ORIGIN` (comma-separated) |
-| `EADDRINUSE :::80` | IIS, Skype or another server holds port 80 | Stop it, or change `server.port` in `vite.config.js` |
+| `Port 3000 is already in use` | another dev server is running | Stop it: `Get-NetTCPConnection -LocalPort 3000 \| Select OwningProcess` then `Stop-Process -Id <pid>` |
+| `EADDRINUSE :::80` | IIS, Skype or another server holds port 80 | Only affects single-server mode; use `npm run dev` on 3000 instead |
+| Blank page at `localhost:3000` | frontend not started, or started on another port | Check the Vite banner says `Local: http://localhost:3000/` |
+| API calls 404 from the browser | backend not running on 5000 | Start it — the Vite proxy forwards `/api` to `127.0.0.1:5000` |
 | `medchain.local` shows search results | browser treated it as a query | Type the full `http://medchain.local` |
 | `medchain.local` does not resolve | hosts entry missing | Run `scripts\setup-hostname.ps1` as Administrator |
 | `Blocked request. This host is not allowed` | hostname not in `allowedHosts` | Add it to `server.allowedHosts` in `vite.config.js` |

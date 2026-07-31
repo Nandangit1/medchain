@@ -191,6 +191,22 @@ describe("Module 11 — sessions, resets, notifications, audit", () => {
       const resetUrl = requested.body.data?.resetUrl;
       assert.ok(resetUrl, "development mode should return the reset link");
 
+      /**
+       * Regression guard. The link was once built from CORS_ORIGIN, which is a
+       * comma-separated allow-list — producing a malformed URL containing every
+       * origin at once, and emailing users a link that could not be opened.
+       * It must be a single well-formed origin.
+       */
+      assert.doesNotThrow(
+        () => new URL(resetUrl),
+        `reset link is not a valid URL: ${resetUrl}`
+      );
+      assert.ok(
+        !resetUrl.includes(","),
+        `reset link must contain exactly one origin, got: ${resetUrl}`
+      );
+      assert.match(new URL(resetUrl).pathname, /^\/reset-password$/);
+
       const token = new URL(resetUrl).searchParams.get("token");
       const newPassword = "Rot4ted!Passw0rd";
 

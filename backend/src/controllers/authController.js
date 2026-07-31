@@ -283,7 +283,9 @@ exports.forgotPassword = catchAsync(async (req, res) => {
   }
 
   const rawToken = await tokenService.issuePasswordResetToken(user, req);
-  const resetUrl = `${env.CORS_ORIGIN}/reset-password?token=${rawToken}`;
+  // APP_URL, not CORS_ORIGIN: the latter is a list and would produce a
+  // malformed link the moment more than one origin is allow-listed.
+  const resetUrl = `${env.APP_URL}/reset-password?token=${rawToken}`;
 
   logger.info("Password reset link issued", { userId: String(user._id), resetUrl });
 
