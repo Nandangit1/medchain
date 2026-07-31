@@ -2,7 +2,7 @@ const logger = require("../config/logger");
 const { env } = require("../config/env");
 const { AUDIT_ACTIONS, AUDIT_OUTCOMES } = require("../constants/audit");
 const { DOCTOR_VERIFICATION_STATUS, ROLES } = require("../constants/roles");
-const User = require("../models/User");
+const userRepository = require("../repositories/userRepository");
 const auditService = require("../services/auditService");
 const tokenService = require("../services/tokenService");
 const AppError = require("../utils/AppError");
@@ -63,7 +63,7 @@ const buildUserPayload = (body) => {
 };
 
 exports.register = catchAsync(async (req, res) => {
-  const user = await User.create(buildUserPayload(req.body));
+  const user = await userRepository.create(buildUserPayload(req.body));
 
   await auditService.record({
     action: AUDIT_ACTIONS.USER_REGISTERED,
@@ -78,9 +78,7 @@ exports.register = catchAsync(async (req, res) => {
 exports.login = catchAsync(async (req, res, next) => {
   const { email, password } = req.body;
 
-  const user = await User.findOne({ email: email.toLowerCase() })
-    .select("+password +isActive")
-    .exec();
+  const user = await userRepository.findByEmailWithCredentials(email);
 
   if (!user || !(await user.comparePassword(password))) {
     /**
@@ -111,7 +109,7 @@ exports.login = catchAsync(async (req, res, next) => {
   }
 
   user.lastLoginAt = new Date();
-  await user.save({ validateBeforeSave: false });
+  await userRepository.save(user);
 
   await auditService.record({
     action: AUDIT_ACTIONS.USER_LOGIN,
@@ -202,10 +200,7 @@ exports.updateMe = catchAsync(async (req, res, next) => {
     delete updates.doctorProfile.rejectionReason;
   }
 
-  const updatedUser = await User.findByIdAndUpdate(req.user._id, updates, {
-    new: true,
-    runValidators: true,
-  });
+  const updatedUser = await userRepository.updateById(req.user._id, updates);
 
   if (!updatedUser) {
     return next(new AppError("User not found.", 404));
@@ -224,7 +219,7 @@ exports.updateMe = catchAsync(async (req, res, next) => {
 });
 
 exports.changePassword = catchAsync(async (req, res, next) => {
-  const user = await User.findById(req.user._id).select("+password +isActive");
+  const user = await userRepository.findByIdWithCredentials(req.user._id);
 
   if (!user || !user.isActive) {
     return next(new AppError("User not found.", 404));
@@ -243,7 +238,8 @@ exports.changePassword = catchAsync(async (req, res, next) => {
   }
 
   user.password = req.body.newPassword;
-  await user.save();
+  // Hooks must run here — the pre-save hook is what re-hashes the password.
+  await userRepository.saveWithHooks(user);
 
   // Changing a password must invalidate every other session.
   await tokenService.revokeAllForUser(user._id);
@@ -271,7 +267,7 @@ exports.changePassword = catchAsync(async (req, res, next) => {
  */
 exports.forgotPassword = catchAsync(async (req, res) => {
   const email = String(req.body.email).toLowerCase();
-  const user = await User.findOne({ email }).select("+isActive");
+  const user = await userRepository.findByEmailWithStatus(email);
 
   const genericResponse = () =>
     sendSuccess(
@@ -311,9 +307,9 @@ exports.forgotPassword = catchAsync(async (req, res) => {
 exports.resetPassword = catchAsync(async (req, res) => {
   const user = await tokenService.consumePasswordResetToken(req.body.token);
 
-  const account = await User.findById(user._id).select("+password +isActive");
+  const account = await userRepository.findByIdWithCredentials(user._id);
   account.password = req.body.newPassword;
-  await account.save();
+  await userRepository.saveWithHooks(account);
 
   // A reset means the old credentials may be compromised; drop every session.
   await tokenService.revokeAllForUser(account._id);

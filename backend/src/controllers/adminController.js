@@ -1,14 +1,14 @@
 const { DOCTOR_VERIFICATION_STATUS, ROLES } = require("../constants/roles");
-const User = require("../models/User");
+const userRepository = require("../repositories/userRepository");
 const adminService = require("../services/adminService");
 const auditService = require("../services/auditService");
 const blockchainService = require("../services/blockchainService");
 const notificationService = require("../services/notificationService");
 const { AUDIT_ACTIONS } = require("../constants/audit");
-const { NOTIFICATION_TYPES } = require("../models/Notification");
+const { NOTIFICATION_TYPES } = require("../constants/notifications");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
-const { buildPagination, buildPaginationMeta } = require("../utils/pagination");
+const { buildPagination, buildPaginationMeta, buildSort } = require("../utils/pagination");
 const { sendSuccess } = require("../utils/sendResponse");
 
 const buildUserSearchFilter = (query) => {
@@ -59,20 +59,15 @@ const buildDoctorFilter = (query) => {
 
 const sendPaginatedUsers = async (res, message, filter, query) => {
   const pagination = buildPagination(query);
+  const sort = buildSort(query.sort, ["createdAt", "name", "email", "lastLoginAt"], {
+    createdAt: -1,
+  });
 
-  const [users, total] = await Promise.all([
-    User.find(filter)
-      .select("+isActive")
-      .sort({ createdAt: -1 })
-      .skip(pagination.skip)
-      .limit(pagination.limit)
-      .exec(),
-    User.countDocuments(filter),
-  ]);
+  const { users, totalItems } = await userRepository.paginate(filter, pagination, sort);
 
   sendSuccess(res, 200, message, {
     users: users.map((user) => user.toAdminObject()),
-    pagination: buildPaginationMeta(total, pagination),
+    pagination: buildPaginationMeta(totalItems, pagination),
   });
 };
 
@@ -109,7 +104,7 @@ exports.getDoctors = catchAsync(async (req, res) => {
 });
 
 exports.getUserById = catchAsync(async (req, res, next) => {
-  const user = await User.findById(req.params.userId).select("+isActive");
+  const user = await userRepository.findByIdWithStatus(req.params.userId);
 
   if (!user) {
     return next(new AppError("User not found.", 404));
@@ -121,10 +116,7 @@ exports.getUserById = catchAsync(async (req, res, next) => {
 });
 
 exports.verifyDoctor = catchAsync(async (req, res, next) => {
-  const doctor = await User.findOne({
-    _id: req.params.doctorId,
-    role: ROLES.DOCTOR,
-  }).select("+isActive");
+  const doctor = await userRepository.findDoctorById(req.params.doctorId);
 
   if (!doctor) {
     return next(new AppError("Doctor not found.", 404));
@@ -139,7 +131,7 @@ exports.verifyDoctor = catchAsync(async (req, res, next) => {
   doctor.doctorProfile.verifiedAt = new Date();
   doctor.doctorProfile.rejectionReason = undefined;
 
-  await doctor.save({ validateBeforeSave: false });
+  await userRepository.save(doctor);
 
   /**
    * Mirror the decision on-chain so the contract will accept access grants to
@@ -177,10 +169,7 @@ exports.verifyDoctor = catchAsync(async (req, res, next) => {
 });
 
 exports.rejectDoctor = catchAsync(async (req, res, next) => {
-  const doctor = await User.findOne({
-    _id: req.params.doctorId,
-    role: ROLES.DOCTOR,
-  }).select("+isActive");
+  const doctor = await userRepository.findDoctorById(req.params.doctorId);
 
   if (!doctor) {
     return next(new AppError("Doctor not found.", 404));
@@ -191,7 +180,7 @@ exports.rejectDoctor = catchAsync(async (req, res, next) => {
   doctor.doctorProfile.verifiedAt = new Date();
   doctor.doctorProfile.rejectionReason = req.body.rejectionReason;
 
-  await doctor.save({ validateBeforeSave: false });
+  await userRepository.save(doctor);
 
   await auditService.record({
     action: AUDIT_ACTIONS.DOCTOR_REJECTED,
@@ -219,14 +208,14 @@ exports.updateUserStatus = catchAsync(async (req, res, next) => {
     return next(new AppError("Admin cannot deactivate their own account.", 400));
   }
 
-  const user = await User.findById(req.params.userId).select("+isActive");
+  const user = await userRepository.findByIdWithStatus(req.params.userId);
 
   if (!user) {
     return next(new AppError("User not found.", 404));
   }
 
   user.isActive = req.body.isActive;
-  await user.save({ validateBeforeSave: false });
+  await userRepository.save(user);
 
   await auditService.record({
     action: AUDIT_ACTIONS.USER_STATUS_CHANGED,

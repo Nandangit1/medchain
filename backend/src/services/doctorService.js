@@ -1,7 +1,7 @@
 const { RECORD_TYPES } = require("../constants/records");
 const { DOCTOR_VERIFICATION_STATUS, ROLES } = require("../constants/roles");
-const User = require("../models/User");
 const accessPermissionRepository = require("../repositories/accessPermissionRepository");
+const userRepository = require("../repositories/userRepository");
 const diagnosisRepository = require("../repositories/diagnosisRepository");
 const medicalRecordRepository = require("../repositories/medicalRecordRepository");
 const AppError = require("../utils/AppError");
@@ -43,16 +43,7 @@ const listDirectory = async ({ query }) => {
     ];
   }
 
-  const [doctors, totalItems] = await Promise.all([
-    User.find(filter)
-      .select("name doctorProfile.specialization doctorProfile.qualification doctorProfile.hospitalName doctorProfile.experienceYears")
-      .sort({ name: 1 })
-      .skip(pagination.skip)
-      .limit(pagination.limit)
-      .lean()
-      .exec(),
-    User.countDocuments(filter),
-  ]);
+  const { doctors, totalItems } = await userRepository.findVerifiedDoctors(filter, pagination);
 
   return { doctors, pagination: buildPaginationMeta(totalItems, pagination) };
 };

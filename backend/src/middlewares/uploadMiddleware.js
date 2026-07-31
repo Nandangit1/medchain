@@ -2,8 +2,10 @@ const mongoSanitize = require("express-mongo-sanitize");
 const multer = require("multer");
 
 const { env } = require("../config/env");
+const logger = require("../config/logger");
 const { ALLOWED_MIME_TYPES } = require("../constants/records");
 const AppError = require("../utils/AppError");
+const { verifyFileSignature } = require("../utils/fileSignature");
 
 /**
  * Multipart upload middleware.
@@ -52,7 +54,42 @@ const sanitizeMultipartBody = (req, _res, next) => {
   next();
 };
 
-/** Accepts exactly one file under the `file` form field, then sanitizes the text fields. */
-const uploadSingleRecord = [upload.single("file"), sanitizeMultipartBody];
+/**
+ * Verifies the file's real format against its declared type.
+ *
+ * This has to run AFTER Multer, not in `fileFilter`: the filter is called before
+ * the stream is consumed, so there are no bytes to inspect yet. The declared
+ * MIME type comes from the client and is spoofable, which is exactly what this
+ * catches — an executable labelled application/pdf passes the allow-list but
+ * fails here.
+ */
+const verifyFileContent = (req, _res, next) => {
+  if (!req.file) {
+    return next();
+  }
 
-module.exports = { uploadSingleRecord };
+  const { valid, reason, detected } = verifyFileSignature(req.file.buffer, req.file.mimetype);
+
+  if (!valid) {
+    logger.warn("Rejected an upload whose content did not match its declared type", {
+      declared: req.file.mimetype,
+      detected,
+      originalName: req.file.originalname,
+      size: req.file.size,
+      userId: req.user ? String(req.user._id) : null,
+      ip: req.ip,
+    });
+
+    return next(new AppError(reason, 415));
+  }
+
+  return next();
+};
+
+/**
+ * One file under the `file` field, then sanitize the text fields, then confirm
+ * the bytes really are the format they claim to be.
+ */
+const uploadSingleRecord = [upload.single("file"), sanitizeMultipartBody, verifyFileContent];
+
+module.exports = { uploadSingleRecord, verifyFileContent };

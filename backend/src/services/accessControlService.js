@@ -1,6 +1,6 @@
 const { AUDIT_ACTIONS } = require("../constants/audit");
 const { DOCTOR_VERIFICATION_STATUS, ROLES } = require("../constants/roles");
-const { NOTIFICATION_TYPES } = require("../models/Notification");
+const { NOTIFICATION_TYPES } = require("../constants/notifications");
 const accessPermissionRepository = require("../repositories/accessPermissionRepository");
 const medicalRecordRepository = require("../repositories/medicalRecordRepository");
 const userRepository = require("../repositories/userRepository");

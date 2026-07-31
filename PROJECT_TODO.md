@@ -73,12 +73,12 @@ Each of these is documented rather than hidden, and each has a prepared answer i
 | --- | --- | --- |
 | Encryption is server-side, not end-to-end | The server holds the master key and sees plaintext in memory. A compromised server compromises confidentiality. | Q10 |
 | Key loss is unrecoverable | No recovery path for `FILE_ENCRYPTION_KEY`, by design. | Q7 |
-| MIME allow-list trusts `Content-Type` | Magic-byte sniffing would be stronger. Mitigated: files are encrypted, never executed, served `nosniff`. | Q29 |
+| ~~MIME allow-list trusts `Content-Type`~~ | **CLOSED.** Magic-byte verification now runs after Multer and rejects content that disagrees with the declared type — a Windows executable labelled `application/pdf` is refused with 415. | Q29 |
 | Local CIDs differ from Kubo's for large files | Valid CIDv1 raw+sha256, but IPFS chunks above 256 KiB into a UnixFS DAG. | Q38 |
 | Backend does not scale horizontally yet | The nonce counter is in-process; two instances on one registrar key would collide. | Q37 |
 | Rate limiting is per-process | `express-rate-limit` uses in-memory counters; needs Redis behind multiple instances. | deployment-guide §0 |
 | Custodial grants weaken the ownership claim | Most grants are platform-signed. Mitigated: separate revocable role, `custodial=true` on-chain. | Q12, Q40 |
-| M1–M2 controllers bypass repositories | `authController` and `adminController` still call Mongoose directly. Inconsistent with M3+. | Q20 |
+| ~~M1–M2 controllers bypass repositories~~ | **CLOSED.** `authController`, `adminController` and `doctorService` now go through `userRepository`. No controller imports a Mongoose model. | Q20 |
 | No frontend component tests | UI verified by build plus manual walkthrough. | testing-guide |
 | Coverage not instrumented | No c8/nyc configured. | testing-guide |
 | No mail transport | Reset links are written to the application log. | authController |
@@ -91,8 +91,8 @@ Not required for submission; listed in rough order of value.
 
 - [ ] Frontend component tests (Vitest + React Testing Library)
 - [ ] Coverage reporting (`c8`)
-- [ ] Migrate `authController` / `adminController` onto repositories
-- [ ] Magic-byte file-type sniffing
+- [x] ~~Migrate `authController` / `adminController` onto repositories~~
+- [x] ~~Magic-byte file-type sniffing~~
 - [ ] Deploy to Sepolia and record the address in the report
 - [ ] Switch `IPFS_DRIVER=pinata` and verify against real IPFS
 - [ ] SMTP transport for password-reset emails
