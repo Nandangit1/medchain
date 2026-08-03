@@ -116,6 +116,47 @@ export const appointmentApi = {
   endCall: (id) => apiClient.patch(`/appointments/${id}/end-call`).then(unwrap),
 };
 
+// --- ABDM, FHIR and data rights ---------------------------------------------
+
+export const abdmApi = {
+  /** Public: the DPDP notice must be readable before you have an account. */
+  privacyNotice: () => apiClient.get("/privacy-notice").then(unwrap),
+  requestAbhaOtp: (abhaNumber) =>
+    apiClient.post("/abha/request-otp", { abhaNumber }).then(unwrap),
+  linkAbha: (payload) => apiClient.post("/abha/link", payload).then(unwrap),
+  unlinkAbha: () => apiClient.delete("/abha").then(unwrap),
+  fhirMe: () => apiClient.get("/fhir/me").then((response) => response.data),
+  /**
+   * Returns the raw FHIR Bundle, not the usual envelope — this endpoint
+   * answers a DPDP access request and must emit standards-shaped output.
+   */
+  exportMyData: () => apiClient.get("/me/export").then((response) => response.data),
+  eraseMyData: (payload) => apiClient.delete("/me", { data: payload }).then(unwrap),
+};
+
+// --- Selective disclosure ----------------------------------------------------
+
+export const proofApi = {
+  listAttributes: () => apiClient.get("/proofs/attributes").then(unwrap),
+  createAttribute: (payload) => apiClient.post("/proofs/attributes", payload).then(unwrap),
+  deleteAttribute: (id) => apiClient.delete(`/proofs/attributes/${id}`).then(unwrap),
+  createProof: (id, payload) =>
+    apiClient.post(`/proofs/attributes/${id}/prove`, payload).then(unwrap),
+  /** Unauthenticated on purpose: a verifier should not need an account. */
+  verifyProof: (proof) => apiClient.post("/proofs/verify", { proof }).then(unwrap),
+};
+
+// --- Vitals and the ambient scribe -------------------------------------------
+
+export const scribeApi = {
+  listVitals: (params) => apiClient.get("/scribe/vitals", { params }).then(unwrap),
+  recordVital: (payload) => apiClient.post("/scribe/vitals", payload).then(unwrap),
+  draftNote: (appointmentId, transcript) =>
+    apiClient.post(`/scribe/consultations/${appointmentId}/draft`, { transcript }).then(unwrap),
+  signNote: (appointmentId, payload) =>
+    apiClient.post(`/scribe/consultations/${appointmentId}/sign`, payload).then(unwrap),
+};
+
 // --- Admin ------------------------------------------------------------------
 
 export const adminApi = {

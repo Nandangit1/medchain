@@ -25,6 +25,9 @@ const RecordDetail = lazy(() => import("./pages/patient/RecordDetail"));
 const UploadRecord = lazy(() => import("./pages/patient/UploadRecord"));
 const SharedAccess = lazy(() => import("./pages/patient/SharedAccess"));
 const PatientAppointments = lazy(() => import("./pages/patient/Appointments"));
+const PatientHealthId = lazy(() => import("./pages/patient/HealthId"));
+const PatientProofs = lazy(() => import("./pages/patient/Proofs"));
+const PatientVitals = lazy(() => import("./pages/patient/Vitals"));
 
 const DoctorDashboard = lazy(() => import("./pages/doctor/Dashboard"));
 const DoctorPatients = lazy(() => import("./pages/doctor/Patients"));
@@ -32,6 +35,7 @@ const DoctorRecords = lazy(() => import("./pages/doctor/Records"));
 const DoctorRecordDetail = lazy(() => import("./pages/doctor/RecordDetail"));
 const DoctorDiagnoses = lazy(() => import("./pages/doctor/Diagnoses"));
 const DoctorAppointments = lazy(() => import("./pages/doctor/Appointments"));
+const DoctorConsultationNote = lazy(() => import("./pages/doctor/ConsultationNote"));
 
 const AdminDashboard = lazy(() => import("./pages/admin/Dashboard"));
 const AdminDoctors = lazy(() => import("./pages/admin/Doctors"));
@@ -76,6 +80,9 @@ const App = () => (
         <Route path="/patient/upload" element={<UploadRecord />} />
         <Route path="/patient/access" element={<SharedAccess />} />
         <Route path="/patient/appointments" element={<PatientAppointments />} />
+        <Route path="/patient/vitals" element={<PatientVitals />} />
+        <Route path="/patient/proofs" element={<PatientProofs />} />
+        <Route path="/patient/health-id" element={<PatientHealthId />} />
       </Route>
 
       {/* Doctor */}
@@ -92,6 +99,10 @@ const App = () => (
         <Route path="/doctor/records/:recordId" element={<DoctorRecordDetail />} />
         <Route path="/doctor/diagnoses" element={<DoctorDiagnoses />} />
         <Route path="/doctor/appointments" element={<DoctorAppointments />} />
+        <Route
+          path="/doctor/consultations/:appointmentId/note"
+          element={<DoctorConsultationNote />}
+        />
       </Route>
 
       {/* Admin */}

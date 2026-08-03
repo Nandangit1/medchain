@@ -1,6 +1,6 @@
 import { Button } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
-import { FiCalendar, FiVideo } from "react-icons/fi";
+import { FiCalendar, FiEdit3, FiVideo } from "react-icons/fi";
 
 import { EmptyState, ErrorState, SkeletonRows, StatusChip, formatDate } from "./common";
 
@@ -91,6 +91,23 @@ const AppointmentList = ({ state, perspective, onAction }) => {
                         Confirm
                       </Button>
                     )}
+                    {/*
+                      Available once the consultation has happened as well as
+                      during it — notes are often written after the call ends.
+                    */}
+                    {perspective === "doctor" &&
+                      ["confirmed", "completed"].includes(appointment.status) && (
+                        <Button
+                          size="sm"
+                          variant="outline-primary"
+                          onClick={() =>
+                            navigate(`/doctor/consultations/${appointment._id}/note`)
+                          }
+                        >
+                          <FiEdit3 className="me-1" />
+                          Note
+                        </Button>
+                      )}
                     {perspective === "doctor" && appointment.status === "confirmed" && (
                       <>
                         <Button size="sm" onClick={() => onAction("complete", appointment)}>

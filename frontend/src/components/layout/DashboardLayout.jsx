@@ -4,13 +4,17 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   FiActivity,
   FiCalendar,
+  FiCheckSquare,
+  FiCreditCard,
   FiFileText,
   FiGrid,
+  FiLock,
   FiLogOut,
   FiMenu,
   FiMoon,
   FiShield,
   FiSun,
+  FiTrendingUp,
   FiUpload,
   FiUser,
   FiUserCheck,
@@ -32,8 +36,12 @@ const NAV_BY_ROLE = {
     { to: "/patient/access", label: "Shared access", icon: <FiShield /> },
     { section: "Care" },
     { to: "/patient/appointments", label: "Appointments", icon: <FiCalendar /> },
+    { to: "/patient/vitals", label: "Vitals", icon: <FiTrendingUp /> },
+    { to: "/patient/proofs", label: "Provable claims", icon: <FiCheckSquare /> },
+    { to: "/patient/health-id", label: "Health ID", icon: <FiCreditCard /> },
     { section: "Account" },
     { to: "/profile", label: "Profile", icon: <FiUser /> },
+    { to: "/security", label: "Security", icon: <FiLock /> },
   ],
   [ROLES.DOCTOR]: [
     { section: "Overview" },
@@ -46,6 +54,7 @@ const NAV_BY_ROLE = {
     { to: "/doctor/appointments", label: "Appointments", icon: <FiCalendar /> },
     { section: "Account" },
     { to: "/profile", label: "Profile", icon: <FiUser /> },
+    { to: "/security", label: "Security", icon: <FiLock /> },
   ],
   [ROLES.ADMIN]: [
     { section: "Overview" },
@@ -58,6 +67,7 @@ const NAV_BY_ROLE = {
     { to: "/admin/blockchain", label: "Blockchain", icon: <FiShield /> },
     { section: "Account" },
     { to: "/profile", label: "Profile", icon: <FiUser /> },
+    { to: "/security", label: "Security", icon: <FiLock /> },
   ],
 };
 
