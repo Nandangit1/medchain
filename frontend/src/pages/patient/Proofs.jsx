@@ -6,12 +6,17 @@ import { FiCheck, FiCopy, FiPlus, FiShield, FiX } from "react-icons/fi";
 import { EmptyState, PageHeader } from "../../components/common";
 import { proofApi } from "../../services";
 
+/**
+ * `zk` marks the comparisons the circuit can prove without revealing the
+ * value. The others still work, but the proof discloses the measurement, and
+ * the dropdown says so rather than letting the user find out afterwards.
+ */
 const PREDICATES = [
-  { value: "lt", label: "is below" },
-  { value: "lte", label: "is at most" },
-  { value: "gt", label: "is above" },
-  { value: "gte", label: "is at least" },
-  { value: "eq", label: "equals" },
+  { value: "lt", label: "is below", zk: true },
+  { value: "lte", label: "is at most", zk: true },
+  { value: "gt", label: "is above", zk: false },
+  { value: "gte", label: "is at least", zk: false },
+  { value: "eq", label: "equals", zk: false },
 ];
 
 /**
@@ -107,8 +112,10 @@ const Proofs = () => {
       <Alert variant="light" className="border small">
         <FiShield className="me-2" />
         Each measurement is sealed into a <strong>commitment</strong> — a one-way fingerprint
-        that binds the value without revealing it. You can later prove a statement about that
-        value, and the verifier can check it against the commitment without an account here.
+        that binds the value without revealing it. For <em>is below</em> and{" "}
+        <em>is at most</em>, MedChain then produces a <strong>zero-knowledge proof</strong>:
+        the verifier learns that your claim is true and nothing else, and can check it without
+        an account here.
       </Alert>
 
       <Card>
@@ -267,6 +274,7 @@ const Proofs = () => {
                   {PREDICATES.map((predicate) => (
                     <option key={predicate.value} value={predicate.value}>
                       {predicate.label}
+                      {predicate.zk ? "  (zero-knowledge)" : "  (reveals the value)"}
                     </option>
                   ))}
                 </Form.Select>
@@ -322,14 +330,24 @@ const Proofs = () => {
           </Badge>
 
           {/*
-            Stated prominently, not buried: until the SNARK circuit is compiled,
-            handing over this proof also hands over the measured value.
+            Which mode was used is a real difference in what the recipient
+            learns, so it is stated prominently rather than buried.
           */}
-          <Alert variant="warning" className="small">
-            This proof <strong>reveals the measured value</strong> to whoever you give it to.
-            Proving the statement while keeping the value secret requires the zero-knowledge
-            circuit, which is written but not yet compiled.
-          </Alert>
+          {proof?.mode === "zero_knowledge" ? (
+            <Alert variant="success" className="small">
+              <strong>Zero-knowledge.</strong> This proof establishes the statement without
+              revealing your measurement. The recipient learns only that the claim is true of
+              the value you committed to — the number itself is not in this proof and cannot be
+              recovered from it.
+            </Alert>
+          ) : (
+            <Alert variant="warning" className="small">
+              This proof <strong>reveals the measured value</strong>. There is no circuit for
+              this comparison yet, so the opening is what binds the claim — and an opening
+              contains the number. Use <em>is below</em> or <em>is at most</em> for a
+              zero-knowledge proof.
+            </Alert>
+          )}
 
           <p className="small text-muted mb-1">
             Give the verifier this JSON. They check it at{" "}

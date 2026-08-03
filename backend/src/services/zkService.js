@@ -1,4 +1,6 @@
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 
 const { buildPoseidon } = require("circomlibjs");
 
@@ -157,6 +159,98 @@ const describePredicate = ({ attribute, predicate, threshold, unit }) => {
   return `${attribute} ${words[predicate]} ${threshold}${unit ? ` ${unit}` : ""}`;
 };
 
+// --- Zero-knowledge proofs -------------------------------------------------
+
+/**
+ * Groth16 over the circuit in blockchain/circuits/range_proof.circom.
+ *
+ * This is what makes the scheme genuinely zero-knowledge: the patient proves
+ * they know a (value, salt) opening the commitment AND that the value is under
+ * a threshold, while the verifier learns only the commitment and the threshold.
+ * The public signals are exactly [commitment, threshold] -- the measurement is
+ * never transmitted.
+ */
+const ARTIFACT_DIR = path.resolve(__dirname, "..", "..", "..", "blockchain", "build");
+const WASM_PATH = path.join(ARTIFACT_DIR, "range_proof_js", "range_proof.wasm");
+const ZKEY_PATH = path.join(ARTIFACT_DIR, "rp_final.zkey");
+const VKEY_PATH = path.join(ARTIFACT_DIR, "verification_key.json");
+
+/**
+ * The circuit proves strict less-than only. `lte` is expressed as
+ * `value < threshold + 1`, which is exact because values are integers after
+ * scaling. The remaining predicates have no circuit, so they fall back to
+ * disclosure and say so rather than silently pretending.
+ */
+const ZK_PREDICATES = new Set([PREDICATES.LESS_THAN, PREDICATES.LESS_OR_EQUAL]);
+
+const isZkAvailable = () =>
+  fs.existsSync(WASM_PATH) && fs.existsSync(ZKEY_PATH) && fs.existsSync(VKEY_PATH);
+
+const supportsZk = (predicate) => ZK_PREDICATES.has(predicate) && isZkAvailable();
+
+/** The bound the circuit is given, which is not always the stated threshold. */
+const circuitThreshold = ({ predicate, threshold }) =>
+  predicate === PREDICATES.LESS_OR_EQUAL
+    ? toFieldElement(threshold) + 1n
+    : toFieldElement(threshold);
+
+const generateProof = async ({ value, salt, commitment, predicate, threshold }) => {
+  const { groth16 } = require("snarkjs");
+
+  try {
+    const { proof, publicSignals } = await groth16.fullProve(
+      {
+        value: toFieldElement(value).toString(),
+        salt: String(salt),
+        commitment: String(commitment),
+        threshold: circuitThreshold({ predicate, threshold }).toString(),
+      },
+      WASM_PATH,
+      ZKEY_PATH
+    );
+
+    return { proof, publicSignals };
+  } catch {
+    /**
+     * The circuit asserts rather than returning false, so a witness that does
+     * not satisfy the constraints throws here. That is the honest answer to
+     * "prove something untrue" -- it is not an internal error.
+     */
+    throw new AppError(
+      "That statement is not true of the committed value, so no proof exists for it.",
+      422
+    );
+  }
+};
+
+/**
+ * Verifies the proof AND that it is about the commitment and threshold the
+ * caller claims. Checking the proof alone would let someone present a valid
+ * proof about a different commitment and have it accepted.
+ */
+const verifyProof = async ({ proof, publicSignals, commitment, predicate, threshold }) => {
+  const { groth16 } = require("snarkjs");
+
+  if (!isZkAvailable()) {
+    throw new AppError("Zero-knowledge verification is not configured on this server.", 501);
+  }
+
+  const vkey = JSON.parse(fs.readFileSync(VKEY_PATH, "utf8"));
+
+  let cryptographicallyValid = false;
+  try {
+    cryptographicallyValid = await groth16.verify(vkey, publicSignals, proof);
+  } catch {
+    cryptographicallyValid = false;
+  }
+
+  const boundToCommitment = String(publicSignals?.[0]) === String(commitment);
+  const boundToThreshold =
+    String(publicSignals?.[1]) === circuitThreshold({ predicate, threshold }).toString();
+
+  return { cryptographicallyValid, boundToCommitment, boundToThreshold };
+};
+
 module.exports = {
   PREDICATES,
   SCALE,
@@ -164,6 +258,10 @@ module.exports = {
   describePredicate,
   evaluatePredicate,
   fromFieldElement,
+  generateProof,
+  isZkAvailable,
+  supportsZk,
   toFieldElement,
   verifyDisclosure,
+  verifyProof,
 };

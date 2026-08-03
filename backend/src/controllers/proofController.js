@@ -118,6 +118,20 @@ exports.createProof = catchAsync(async (req, res) => {
     unit: attribute.unit,
   });
 
+  const zk = zkService.supportsZk(predicate);
+
+  /**
+   * A false statement has no zero-knowledge proof -- the circuit will not
+   * produce a witness for it. Refusing here is more honest than issuing a
+   * "holds: false" proof that reveals the value in the process.
+   */
+  if (zk && !holds) {
+    throw new AppError(
+      "That statement is not true of the committed value, so no proof exists for it.",
+      422
+    );
+  }
+
   const payload = {
     statement,
     holds,
@@ -126,12 +140,33 @@ exports.createProof = catchAsync(async (req, res) => {
     commitment: attribute.commitment,
     predicate,
     threshold,
-    // The opening. Present because this is a disclosure, not yet a SNARK.
-    opening: { value: attribute.value, salt: attribute.salt },
     audience: audience || null,
     issuedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + expiresInHours * 3_600_000).toISOString(),
   };
+
+  if (zk) {
+    /**
+     * The zero-knowledge path. Note what is absent: there is no opening, so
+     * the measured value is not in this payload and cannot be recovered from
+     * it. The public signals are only the commitment and the threshold.
+     */
+    const { proof, publicSignals } = await zkService.generateProof({
+      value: attribute.value,
+      salt: attribute.salt,
+      commitment: attribute.commitment,
+      predicate,
+      threshold,
+    });
+
+    payload.mode = "zero_knowledge";
+    payload.zk = { protocol: "groth16", curve: "bn128", proof, publicSignals };
+  } else {
+    // No circuit for this predicate yet, so the opening is what binds the
+    // claim -- and an opening contains the value. Flagged, not hidden.
+    payload.mode = "disclosure";
+    payload.opening = { value: attribute.value, salt: attribute.salt };
+  }
 
   /**
    * Signed so a verifier can tell the proof came from this deployment and was
@@ -156,8 +191,10 @@ exports.createProof = catchAsync(async (req, res) => {
 
   sendSuccess(res, 201, "Proof issued.", {
     proof: { ...payload, signature },
-    disclosesValue: true,
-    note: "This proof reveals the measured value. Compile the range-proof circuit to prove the statement without it.",
+    disclosesValue: !zk,
+    note: zk
+      ? "Zero-knowledge: this proof establishes the statement without revealing the measured value."
+      : `No circuit exists for "${predicate}" yet, so this proof reveals the measured value.`,
   });
 });
 
@@ -168,7 +205,7 @@ exports.createProof = catchAsync(async (req, res) => {
 exports.verifyProof = catchAsync(async (req, res) => {
   const { proof } = req.body;
 
-  if (!proof?.commitment || !proof?.opening) {
+  if (!proof?.commitment || !(proof.opening || proof.zk)) {
     throw new AppError("That is not a MedChain proof.", 400);
   }
 
@@ -185,33 +222,59 @@ exports.verifyProof = catchAsync(async (req, res) => {
     signature.length === expected.length &&
     crypto.timingSafeEqual(Buffer.from(signature, "hex"), Buffer.from(expected, "hex"));
 
-  const commitmentValid = await zkService.verifyDisclosure({
-    value: proof.opening.value,
-    salt: proof.opening.salt,
-    commitment: proof.commitment,
-  });
-
-  const predicateHolds = zkService.evaluatePredicate({
-    value: proof.opening.value,
-    predicate: proof.predicate,
-    threshold: proof.threshold,
-  });
-
   const expired = new Date(proof.expiresAt) < new Date();
+  let checks;
 
-  sendSuccess(res, 200, "Verification complete.", {
-    valid: signatureValid && commitmentValid && predicateHolds && !expired,
-    statement: proof.statement,
-    checks: {
+  if (proof.zk) {
+    /**
+     * Zero-knowledge path. Three separate questions, all of which must hold:
+     * is the proof cryptographically sound, is it about THIS commitment, and
+     * is it about THIS threshold? Checking only the first would accept a valid
+     * proof about somebody else's commitment, or about a weaker bound.
+     */
+    const result = await zkService.verifyProof({
+      proof: proof.zk.proof,
+      publicSignals: proof.zk.publicSignals,
+      commitment: proof.commitment,
+      predicate: proof.predicate,
+      threshold: proof.threshold,
+    });
+
+    checks = {
+      signature: signatureValid,
+      zeroKnowledgeProof: result.cryptographicallyValid,
+      boundToCommitment: result.boundToCommitment,
+      boundToThreshold: result.boundToThreshold,
+      notExpired: !expired,
+    };
+  } else {
+    const commitmentValid = await zkService.verifyDisclosure({
+      value: proof.opening.value,
+      salt: proof.opening.salt,
+      commitment: proof.commitment,
+    });
+
+    checks = {
       // Was it issued by this deployment, unmodified?
       signature: signatureValid,
-      // Does the opening actually match the commitment? This is the one that
-      // stops a patient inventing a convenient value after the fact.
+      // Does the opening actually match the commitment? This is what stops a
+      // patient inventing a convenient value after the fact.
       commitmentBinding: commitmentValid,
       // Is the claim true of the committed value?
-      predicate: predicateHolds,
+      predicate: zkService.evaluatePredicate({
+        value: proof.opening.value,
+        predicate: proof.predicate,
+        threshold: proof.threshold,
+      }),
       notExpired: !expired,
-    },
+    };
+  }
+
+  sendSuccess(res, 200, "Verification complete.", {
+    valid: Object.values(checks).every(Boolean),
+    statement: proof.statement,
+    mode: proof.zk ? "zero_knowledge" : "disclosure",
+    checks,
     commitment: proof.commitment,
     verifiedAt: new Date().toISOString(),
   });

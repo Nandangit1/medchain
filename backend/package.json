@@ -56,6 +56,7 @@
     "nodemailer": "^9.0.3",
     "otplib": "^13.4.1",
     "qrcode": "^1.5.4",
+    "snarkjs": "^0.7.6",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0"
   },

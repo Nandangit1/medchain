@@ -11,7 +11,9 @@
     "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
     "//deploy:ignition": "Declarative deploy, then publish the address + ABI to the backend.",
     "deploy:ignition": "hardhat ignition deploy ./ignition/modules/TelemedicineRecords.js --network localhost && hardhat run scripts/syncAbi.js --network localhost",
-    "sync:abi": "hardhat run scripts/syncAbi.js --network localhost"
+    "sync:abi": "hardhat run scripts/syncAbi.js --network localhost",
+    "//zk": "Compile the range-proof circuit and run a fresh Groth16 setup.",
+    "zk:build": "node scripts/buildCircuit.js"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +26,7 @@
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.6.1",
+    "circomlib": "^2.0.5",
     "circomlibjs": "^0.1.7",
     "snarkjs": "^0.7.6"
   }

@@ -24,15 +24,20 @@ include "../node_modules/circomlib/circuits/comparators.circom";
  * one the patient published earlier. That binding is what stops a patient
  * proving a statement about a value they invented after being asked.
  *
- * BUILD (needs the circom compiler, a Rust binary, plus a powers-of-tau file):
+ * BUILD
  *
- *   circom circuits/range_proof.circom --r1cs --wasm --sym -o build/
- *   snarkjs groth16 setup build/range_proof.r1cs pot14_final.ptau build/rp_0000.zkey
- *   snarkjs zkey contribute build/rp_0000.zkey build/rp_final.zkey
- *   snarkjs zkey export verificationkey build/rp_final.zkey build/verification_key.json
- *   snarkjs zkey export solidityverifier build/rp_final.zkey contracts/RangeVerifier.sol
+ *   npm run zk:build
  *
- * Deploying RangeVerifier.sol then makes the proof checkable ON CHAIN, so a
+ * That compiles this file, runs the Groth16 setup, and writes both the
+ * verification key and contracts/RangeVerifier.sol. It needs the circom
+ * compiler in .tools/ -- a standalone Rust binary, deliberately not committed.
+ * The API loads the resulting proving key on start and needs no restart-time
+ * configuration.
+ *
+ * SIZE: ~715 constraints. A proof takes roughly 0.8s to produce and 25ms to
+ * verify, and is about 720 bytes.
+ *
+ * The exported RangeVerifier.sol makes a proof checkable ON CHAIN, so a
  * verifier need not trust MedChain at all -- which is the whole point.
  */
 template RangeProof(nBits) {

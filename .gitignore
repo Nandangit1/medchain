@@ -36,3 +36,24 @@ blockchain/deployments/
 Thumbs.db
 .vscode/
 .idea/
+
+# --- Zero-knowledge build artefacts ---
+# The circom compiler is a 12 MB downloaded binary; `npm run zk:build` tells
+# you where to put it.
+blockchain/.tools/
+#
+# Three files under blockchain/build/ MUST ship: the API loads them at runtime
+# to issue and verify proofs, so a fresh clone without them cannot do either.
+# The generic `build/` rule above hides the whole directory, and git will not
+# descend into an excluded directory to re-include a file inside it -- so the
+# directory is un-excluded first, its contents excluded again, and only the
+# three runtime files negated. Everything else there (powers-of-tau, r1cs, sym,
+# the pre-contribution zkey) regenerates in seconds and is far too large to
+# carry in git.
+!blockchain/build/
+blockchain/build/*
+!blockchain/build/rp_final.zkey
+!blockchain/build/verification_key.json
+!blockchain/build/range_proof_js/
+blockchain/build/range_proof_js/*
+!blockchain/build/range_proof_js/range_proof.wasm
