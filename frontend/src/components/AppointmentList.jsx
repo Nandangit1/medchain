@@ -1,5 +1,6 @@
 import { Button } from "react-bootstrap";
-import { FiCalendar } from "react-icons/fi";
+import { useNavigate } from "react-router-dom";
+import { FiCalendar, FiVideo } from "react-icons/fi";
 
 import { EmptyState, ErrorState, SkeletonRows, StatusChip, formatDate } from "./common";
 
@@ -12,6 +13,7 @@ const MODE_LABELS = { video: "Video call", in_person: "In person", phone: "Phone
  */
 const AppointmentList = ({ state, perspective, onAction }) => {
   const { data, loading, error, refetch } = state;
+  const navigate = useNavigate();
 
   if (loading) return <SkeletonRows rows={4} />;
   if (error) return <ErrorState message={error} onRetry={refetch} />;
@@ -69,6 +71,21 @@ const AppointmentList = ({ state, perspective, onAction }) => {
                 </td>
                 <td className="text-end">
                   <div className="d-flex gap-1 justify-content-end flex-wrap">
+                    {/*
+                      Offered for any confirmed video appointment. The join
+                      window is enforced server-side, so an early click gets a
+                      clear "opens at ..." message rather than a dead room.
+                    */}
+                    {appointment.mode === "video" && appointment.status === "confirmed" && (
+                      <Button
+                        size="sm"
+                        variant="success"
+                        onClick={() => navigate(`/consultation/${appointment._id}`)}
+                      >
+                        <FiVideo className="me-1" />
+                        Join
+                      </Button>
+                    )}
                     {perspective === "doctor" && appointment.status === "requested" && (
                       <Button size="sm" onClick={() => onAction("confirm", appointment)}>
                         Confirm

@@ -331,6 +331,7 @@ const uploadRecordForPatient = async ({ actor, patientId, file, payload, req }) 
     title: "A doctor added a document to your records",
     message: `${actor.name} uploaded "${record.title}".`,
     link: `/patient/records/${record._id}`,
+    email: true,
   });
 
   return record.toClientObject();

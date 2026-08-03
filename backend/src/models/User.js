@@ -117,6 +117,23 @@ const userSchema = new mongoose.Schema(
       default: WALLET_TYPES.CUSTODIAL,
     },
     onChainRegisteredAt: Date,
+    /**
+     * ABDM national health identity.
+     *
+     * Deliberately separate from `walletAddress`: one is who the citizen is to
+     * the Indian health system, the other is who they are to the chain. A
+     * record can be anchored without an ABHA, and an ABHA can be linked long
+     * after the account was created.
+     *
+     * `verified` records whether the link was actually proven against the NHA
+     * (OTP against Aadhaar or mobile) rather than merely typed in.
+     */
+    abha: {
+      number: { type: String, trim: true },
+      address: { type: String, trim: true, lowercase: true },
+      verified: { type: Boolean, default: false },
+      linkedAt: Date,
+    },
     isActive: {
       type: Boolean,
       default: true,
@@ -124,6 +141,23 @@ const userSchema = new mongoose.Schema(
     },
     passwordChangedAt: Date,
     lastLoginAt: Date,
+    /**
+     * Second factor (TOTP). `secret` holds the AES-256-GCM envelope produced by
+     * mfaService, never the raw shared secret, and `backupCodes` holds bcrypt
+     * hashes — both `select: false` so a stray `find()` can never leak a way to
+     * generate valid codes.
+     *
+     * `pendingSecret` is the not-yet-confirmed enrolment: a secret is only
+     * promoted once the user proves their phone can produce a code from it.
+     */
+    mfa: {
+      enabled: { type: Boolean, default: false },
+      secret: { type: String, select: false },
+      pendingSecret: { type: String, select: false },
+      backupCodes: { type: [String], select: false, default: undefined },
+      enrolledAt: Date,
+      lastVerifiedAt: Date,
+    },
   },
   {
     timestamps: true,
@@ -171,19 +205,33 @@ userSchema.methods.changedPasswordAfter = function changedPasswordAfter(jwtIssue
   return changedTimestamp > jwtIssuedAt;
 };
 
-userSchema.methods.toSafeObject = function toSafeObject() {
-  const user = this.toObject();
+/**
+ * The MFA material is `select: false`, so it is normally absent already. This
+ * strips it a second time because these two methods are the only things that
+ * reach a client, and a future `select("+mfa.secret")` somewhere else must not
+ * silently turn into a leak.
+ */
+const stripSecrets = (user) => {
   delete user.password;
-  delete user.isActive;
   delete user.__v;
+
+  if (user.mfa) {
+    delete user.mfa.secret;
+    delete user.mfa.pendingSecret;
+    delete user.mfa.backupCodes;
+  }
+
+  return user;
+};
+
+userSchema.methods.toSafeObject = function toSafeObject() {
+  const user = stripSecrets(this.toObject());
+  delete user.isActive;
   return user;
 };
 
 userSchema.methods.toAdminObject = function toAdminObject() {
-  const user = this.toObject();
-  delete user.password;
-  delete user.__v;
-  return user;
+  return stripSecrets(this.toObject());
 };
 
 const User = mongoose.model("User", userSchema);

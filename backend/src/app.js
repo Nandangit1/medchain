@@ -12,6 +12,7 @@ const morgan = require("morgan");
 
 const { env } = require("./config/env");
 const AppError = require("./utils/AppError");
+const abdmRoutes = require("./routes/abdmRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const appointmentRoutes = require("./routes/appointmentRoutes");
 const authRoutes = require("./routes/authRoutes");
@@ -20,6 +21,8 @@ const healthRoutes = require("./routes/healthRoutes");
 const medicalRecordRoutes = require("./routes/medicalRecordRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const patientRoutes = require("./routes/patientRoutes");
+const proofRoutes = require("./routes/proofRoutes");
+const scribeRoutes = require("./routes/scribeRoutes");
 const globalErrorHandler = require("./middlewares/errorMiddleware");
 
 const app = express();
@@ -41,6 +44,16 @@ const canServeFrontend = env.SERVE_FRONTEND && fs.existsSync(FRONTEND_INDEX);
  * plain http — every asset would fail. It is therefore only kept when TLS is
  * actually in use.
  */
+/**
+ * Video consultations run in an iframe served by a Jitsi deployment, and its
+ * bootstrap script is loaded from that same host. Both need naming in the CSP:
+ * the default policy would block the script and the frame outright.
+ *
+ * Scoped to one configured origin rather than a wildcard, so switching to a
+ * self-hosted Jitsi is a config change and an unknown host stays blocked.
+ */
+const jitsiOrigin = `https://${env.JITSI_DOMAIN}`;
+
 const cspDirectives = {
   ...helmet.contentSecurityPolicy.getDefaultDirectives(),
   "img-src": ["'self'", "data:", "blob:"],
@@ -48,6 +61,8 @@ const cspDirectives = {
   // Decrypted files are handed to the browser as blob: URLs for download.
   "media-src": ["'self'", "blob:"],
   "frame-ancestors": ["'none'"],
+  "script-src": ["'self'", jitsiOrigin],
+  "frame-src": ["'self'", jitsiOrigin],
 };
 
 if (!env.TRUST_TLS) {
@@ -135,6 +150,14 @@ app.use("/api/v1/patients", patientRoutes);
 app.use("/api/v1/doctors", doctorRoutes);
 app.use("/api/v1/appointments", appointmentRoutes);
 app.use("/api/v1/notifications", notificationRoutes);
+app.use("/api/v1/proofs", proofRoutes);
+app.use("/api/v1/scribe", scribeRoutes);
+/**
+ * Mounted at the API root rather than under a prefix: /me/export and /me are
+ * DPDP data-principal rights, which belong to the person, not to a subsystem.
+ * Registered last so its bare "/me" cannot shadow a more specific route.
+ */
+app.use("/api/v1", abdmRoutes);
 
 /** Machine-readable index, still available when the SPA is mounted at "/". */
 app.get("/api", (_req, res) => {
@@ -150,6 +173,9 @@ app.get("/api", (_req, res) => {
       doctors: "/api/v1/doctors",
       appointments: "/api/v1/appointments",
       notifications: "/api/v1/notifications",
+      proofs: "/api/v1/proofs",
+      fhir: "/api/v1/fhir/me",
+      privacyNotice: "/api/v1/privacy-notice",
     },
   });
 });

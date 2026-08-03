@@ -46,11 +46,31 @@ export const AuthProvider = ({ children }) => {
     restore();
   }, []);
 
+  /**
+   * Returns either the signed-in user, or a challenge the caller must answer.
+   *
+   * When a second factor is enrolled the server withholds the session and
+   * returns a short-lived challenge token instead, so this cannot simply assume
+   * `data.token` exists.
+   */
   const login = useCallback(async (credentials) => {
     const data = await authApi.login(credentials);
+
+    if (data.mfaRequired) {
+      return { mfaRequired: true, challengeToken: data.challengeToken };
+    }
+
     setStoredToken(data.token);
     setUser(data.user);
-    return data.user;
+    return { user: data.user };
+  }, []);
+
+  /** Second leg of an MFA sign-in: exchanges the challenge for a session. */
+  const verifyMfa = useCallback(async ({ challengeToken, code }) => {
+    const data = await authApi.mfaVerify({ challengeToken, code });
+    setStoredToken(data.token);
+    setUser(data.user);
+    return { user: data.user, backupCodesRemaining: data.backupCodesRemaining };
   }, []);
 
   const register = useCallback(async (payload) => {
@@ -97,12 +117,13 @@ export const AuthProvider = ({ children }) => {
       isVerifiedDoctor:
         user?.role === ROLES.DOCTOR && user?.doctorProfile?.verificationStatus === "verified",
       login,
+      verifyMfa,
       register,
       logout,
       refreshUser,
       setUser,
     }),
-    [user, initialising, login, register, logout, refreshUser]
+    [user, initialising, login, verifyMfa, register, logout, refreshUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -65,6 +65,31 @@ const appointmentSchema = new mongoose.Schema(
     },
     /** Written by the doctor after the consultation. */
     doctorNotes: { type: String, trim: true, maxlength: 4000 },
+    /**
+     * Video consultation state, populated only for `mode: "video"`.
+     *
+     * `roomId` is a random opaque identifier, never the appointment id: the
+     * room name is what a Jitsi URL exposes, and a guessable one would let an
+     * outsider walk into a consultation. It is minted on first join and then
+     * reused, so both participants land in the same room.
+     */
+    meeting: {
+      roomId: { type: String, trim: true, select: false },
+      startedAt: Date,
+      endedAt: Date,
+      // Recording is off unless the patient agrees in the waiting room. Stored
+      // because "did the patient consent?" is a question that gets asked later.
+      recordingConsent: { type: Boolean, default: false },
+      participantsJoined: { type: Number, default: 0, min: 0 },
+      /**
+       * SHA-256 of the consultation transcript the signed note was drafted
+       * from. Stored here rather than on the Diagnosis because it attests to
+       * the conversation, not to the clinician's conclusion: anyone holding
+       * the transcript can recompute it and show the note belongs to this
+       * consultation and no other. The transcript itself is never stored.
+       */
+      transcriptHash: { type: String, trim: true, lowercase: true },
+    },
     cancellationReason: { type: String, trim: true, maxlength: 300 },
     cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     confirmedAt: Date,

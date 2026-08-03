@@ -106,3 +106,25 @@ exports.changePasswordRules = [
     .custom((value, { req }) => value === req.body.newPassword)
     .withMessage("Password confirmation does not match."),
 ];
+
+/**
+ * Accepts either a 6-digit TOTP code or a backup code, so the length range is
+ * deliberately wide. The service decides which one it is.
+ */
+const secondFactorRule = body("code")
+  .isString()
+  .trim()
+  .isLength({ min: 6, max: 16 })
+  .withMessage("Enter the 6-digit code from your authenticator app, or a backup code.");
+
+exports.mfaCodeRules = [secondFactorRule];
+
+exports.verifyMfaRules = [
+  body("challengeToken").isString().notEmpty().withMessage("The sign-in attempt has expired."),
+  secondFactorRule,
+];
+
+exports.disableMfaRules = [
+  body("password").notEmpty().withMessage("Your password is required to turn this off."),
+  secondFactorRule,
+];

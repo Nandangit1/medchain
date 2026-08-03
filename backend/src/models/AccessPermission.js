@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 
+const { CONSENT_PURPOSES, HI_TYPES } = require("../constants/abdm");
 const { BLOCKCHAIN_SYNC_STATUS } = require("../constants/records");
 
 /**
@@ -40,6 +41,25 @@ const accessPermissionSchema = new mongoose.Schema(
     /** True when the platform signed on the patient's behalf. */
     custodial: { type: Boolean, default: true },
     note: { type: String, trim: true, maxlength: 300 },
+
+    /**
+     * ABDM consent-artefact fields.
+     *
+     * ABDM requires consent to be purpose-scoped and limited to named health
+     * information types -- "this cardiologist, for care management, my lab
+     * reports only". Without these a grant is all-or-nothing, which is what
+     * the standard exists to prevent. `expiresAt` above already supplies the
+     * time bound the specification also demands.
+     */
+    purpose: {
+      type: String,
+      enum: Object.values(CONSENT_PURPOSES),
+      default: CONSENT_PURPOSES.CARE_MANAGEMENT,
+    },
+    hiTypes: {
+      type: [{ type: String, enum: Object.values(HI_TYPES) }],
+      default: [],
+    },
 
     grantTx: {
       status: {

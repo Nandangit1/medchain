@@ -9,10 +9,18 @@ const mongoose = require("mongoose");
  */
 const diagnosisSchema = new mongoose.Schema(
   {
+    /**
+     * The report this diagnosis was made against, when there is one.
+     *
+     * Optional since the ambient scribe: a diagnosis now has two origins --
+     * a doctor reviewing an uploaded record, or a doctor signing a note from a
+     * consultation, where no document exists to point at. Callers that need
+     * the record must handle null rather than assume it.
+     */
     record: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "MedicalRecord",
-      required: true,
+      default: null,
       index: true,
     },
     patient: {

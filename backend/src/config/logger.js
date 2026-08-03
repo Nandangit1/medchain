@@ -53,7 +53,20 @@ const redact = winston.format((info) => {
     );
   };
 
-  return scrub(info);
+  /**
+   * The top level is redacted IN PLACE, and only nested values are rebuilt.
+   *
+   * Winston carries the level and the rendered line on `info` under the symbols
+   * `Symbol.for("level")` and `Symbol.for("message")`. `Object.entries` sees
+   * only string keys, so returning a rebuilt object drops both symbols, every
+   * transport then fails to match the level, and nothing is ever written --
+   * silently, because a logger cannot report its own failure.
+   */
+  for (const key of Object.keys(info)) {
+    info[key] = REDACTED_KEYS.includes(key) ? "[REDACTED]" : scrub(info[key], 0);
+  }
+
+  return info;
 });
 
 const transports = [

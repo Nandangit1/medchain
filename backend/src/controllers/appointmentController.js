@@ -63,3 +63,33 @@ exports.markNoShow = catchAsync(async (req, res) => {
 
   sendSuccess(res, 200, "Appointment marked as a no-show.", { appointment });
 });
+
+// --- Video consultation ----------------------------------------------------
+
+exports.joinConsultation = catchAsync(async (req, res) => {
+  const consultation = await appointmentService.getJoinDetails({
+    actor: req.user,
+    appointmentId: req.params.appointmentId,
+  });
+
+  sendSuccess(res, 200, "Consultation ready.", { consultation });
+});
+
+exports.setRecordingConsent = catchAsync(async (req, res) => {
+  const result = await appointmentService.setRecordingConsent({
+    actor: req.user,
+    appointmentId: req.params.appointmentId,
+    consent: req.body.consent,
+  });
+
+  sendSuccess(res, 200, "Recording preference saved.", result);
+});
+
+exports.endConsultation = catchAsync(async (req, res) => {
+  const result = await appointmentService.endConsultation({
+    actor: req.user,
+    appointmentId: req.params.appointmentId,
+  });
+
+  sendSuccess(res, 200, "Consultation ended.", result);
+});

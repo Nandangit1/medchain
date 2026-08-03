@@ -18,6 +18,14 @@ export const authApi = {
   changePassword: (payload) => apiClient.patch("/auth/change-password", payload).then(unwrap),
   forgotPassword: (email) => apiClient.post("/auth/forgot-password", { email }).then(unwrap),
   resetPassword: (payload) => apiClient.post("/auth/reset-password", payload).then(unwrap),
+
+  // Two-factor authentication.
+  mfaStatus: () => apiClient.get("/auth/mfa").then(unwrap),
+  mfaSetup: () => apiClient.post("/auth/mfa/setup").then(unwrap),
+  mfaEnable: (code) => apiClient.post("/auth/mfa/enable", { code }).then(unwrap),
+  mfaDisable: (payload) => apiClient.post("/auth/mfa/disable", payload).then(unwrap),
+  /** Second leg of sign-in; unauthenticated, carries the challenge token. */
+  mfaVerify: (payload) => apiClient.post("/auth/mfa/verify", payload).then(unwrap),
 };
 
 // --- Notifications ----------------------------------------------------------
@@ -102,6 +110,10 @@ export const appointmentApi = {
   complete: (id, doctorNotes) =>
     apiClient.patch(`/appointments/${id}/complete`, { doctorNotes }).then(unwrap),
   noShow: (id) => apiClient.patch(`/appointments/${id}/no-show`).then(unwrap),
+  join: (id) => apiClient.get(`/appointments/${id}/join`).then(unwrap),
+  setRecordingConsent: (id, consent) =>
+    apiClient.patch(`/appointments/${id}/recording-consent`, { consent }).then(unwrap),
+  endCall: (id) => apiClient.patch(`/appointments/${id}/end-call`).then(unwrap),
 };
 
 // --- Admin ------------------------------------------------------------------

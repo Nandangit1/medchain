@@ -135,6 +135,7 @@ const grantAccess = async ({ actor, recordId, doctorId, expiresAt, note, req }) 
     title: "A patient shared a record with you",
     message: `${actor.name} gave you access to "${record.title}".`,
     link: `/doctor/records/${record._id}`,
+    email: true,
   });
 
   return permission.toClientObject();

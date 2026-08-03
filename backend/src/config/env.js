@@ -121,6 +121,49 @@ const env = {
    * straightforward. Requires `npm run build` in frontend/ first.
    */
   SERVE_FRONTEND: String(process.env.SERVE_FRONTEND || "false").toLowerCase() === "true",
+  /**
+   * Outbound mail is opt-in. Left false, every message is written to the log
+   * instead of sent, so password reset stays recoverable on a machine with no
+   * SMTP credentials and the test suite needs no mail server.
+   */
+  MAIL_ENABLED: String(process.env.MAIL_ENABLED || "false").toLowerCase() === "true",
+  SMTP_HOST: process.env.SMTP_HOST,
+  SMTP_PORT: Number(process.env.SMTP_PORT || 587),
+  SMTP_USER: process.env.SMTP_USER,
+  SMTP_PASSWORD: process.env.SMTP_PASSWORD,
+  MAIL_FROM: process.env.MAIL_FROM || "MedChain <no-reply@medchain.local>",
+  /**
+   * Roles prompted to set up a second factor. Enforcement is separate and off
+   * by default: switching MFA on must not lock an existing deployment out of
+   * its own admin account before anyone has had a chance to enrol.
+   */
+  MFA_REQUIRED_ROLES: (process.env.MFA_REQUIRED_ROLES || "doctor,admin")
+    .split(",")
+    .map((role) => role.trim().toLowerCase())
+    .filter(Boolean),
+  MFA_ENFORCED: String(process.env.MFA_ENFORCED || "false").toLowerCase() === "true",
+  /**
+   * Host serving the video consultation. Defaults to the public Jitsi instance,
+   * which needs no account and no API key. Point it at a self-hosted deployment
+   * to keep consultation media inside your own infrastructure -- the only
+   * change required is this value.
+   */
+  JITSI_DOMAIN: process.env.JITSI_DOMAIN || "meet.jit.si",
+  /**
+   * ABHA linking driver. "mock" validates format and checksum offline and
+   * never claims an identity was verified; "nha" calls the real ABDM gateway
+   * and needs a registered sandbox client.
+   */
+  ABHA_DRIVER: (process.env.ABHA_DRIVER || "mock").toLowerCase(),
+  ABDM_CLIENT_ID: process.env.ABDM_CLIENT_ID,
+  ABDM_CLIENT_SECRET: process.env.ABDM_CLIENT_SECRET,
+  /**
+   * Ambient-scribe driver. "mock" extracts structure from the transcript
+   * offline and never invents clinical content; "claude" calls the Anthropic
+   * API and needs ANTHROPIC_API_KEY. Either way a clinician signs the result.
+   */
+  SCRIBE_DRIVER: (process.env.SCRIBE_DRIVER || "mock").toLowerCase(),
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   DISABLE_AUTO_INDEX: String(process.env.DISABLE_AUTO_INDEX || "false").toLowerCase() === "true",
   /**
    * Set only when the app is genuinely behind TLS. It controls the `secure`

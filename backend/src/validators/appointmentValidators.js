@@ -62,3 +62,8 @@ exports.completeRules = [
     .isLength({ max: 4000 })
     .withMessage("Doctor notes cannot exceed 4000 characters."),
 ];
+
+exports.recordingConsentRules = [
+  ...exports.appointmentIdRules,
+  body("consent").isBoolean().withMessage("Consent must be true or false.").toBoolean(),
+];

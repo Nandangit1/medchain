@@ -29,6 +29,17 @@ const updateById = (id, updates) =>
     .populate("doctor", "name email doctorProfile.specialization")
     .exec();
 
+/**
+ * Includes `meeting.roomId`, which the schema hides. Only the join flow should
+ * call this: the room name is the entire access control on a Jitsi call, so it
+ * must not travel with an ordinary appointment read.
+ */
+const findByIdWithMeeting = (id) => Appointment.findById(id).select("+meeting.roomId").exec();
+
+/** Atomic so two participants joining at once cannot lose one another's count. */
+const incrementParticipants = (id) =>
+  Appointment.findByIdAndUpdate(id, { $inc: { "meeting.participantsJoined": 1 } }).exec();
+
 const countUpcoming = (filter) =>
   Appointment.countDocuments({
     ...filter,
@@ -36,4 +47,12 @@ const countUpcoming = (filter) =>
     status: { $in: ["requested", "confirmed"] },
   });
 
-module.exports = { countUpcoming, create, findById, paginate, updateById };
+module.exports = {
+  countUpcoming,
+  create,
+  findById,
+  findByIdWithMeeting,
+  incrementParticipants,
+  paginate,
+  updateById,
+};

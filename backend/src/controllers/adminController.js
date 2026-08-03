@@ -160,6 +160,7 @@ exports.verifyDoctor = catchAsync(async (req, res, next) => {
     title: "Your credentials have been verified",
     message: "Patients can now share their medical records with you.",
     link: "/doctor",
+    email: true,
   });
 
   return sendSuccess(res, 200, "Doctor verified successfully.", {
@@ -196,6 +197,7 @@ exports.rejectDoctor = catchAsync(async (req, res, next) => {
     title: "Your verification was declined",
     message: req.body.rejectionReason,
     link: "/profile",
+    email: true,
   });
 
   return sendSuccess(res, 200, "Doctor rejected successfully.", {

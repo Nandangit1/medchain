@@ -1,5 +1,8 @@
+const crypto = require("crypto");
+
+const { env } = require("../config/env");
 const { DOCTOR_VERIFICATION_STATUS, ROLES } = require("../constants/roles");
-const { APPOINTMENT_STATUS } = require("../models/Appointment");
+const { APPOINTMENT_MODES, APPOINTMENT_STATUS } = require("../models/Appointment");
 const appointmentRepository = require("../repositories/appointmentRepository");
 const userRepository = require("../repositories/userRepository");
 const AppError = require("../utils/AppError");
@@ -191,12 +194,140 @@ const markNoShow = async ({ actor, appointmentId }) => {
   return updated.toClientObject();
 };
 
+/**
+ * Issues the details needed to join the video consultation.
+ *
+ * Three rules decide whether a join is allowed, and all three live here rather
+ * than in the client:
+ *
+ *   1. Only the two participants may join. An admin can see that a video
+ *      appointment exists but is never given the room -- the same principle as
+ *      administrators being able to read record metadata but never a file.
+ *   2. The appointment must be confirmed. A room for a slot the doctor has not
+ *      accepted is a way to reach a clinician uninvited.
+ *   3. The room opens shortly before the slot and closes after it. An
+ *      indefinitely live room is a standing back door into a private call.
+ */
+const JOIN_OPENS_MINUTES_BEFORE = 10;
+const JOIN_CLOSES_MINUTES_AFTER = 30;
+
+const getJoinDetails = async ({ actor, appointmentId }) => {
+  const { appointment, isPatient, isDoctor } = await loadParticipantAppointment(appointmentId, actor);
+
+  if (!isPatient && !isDoctor) {
+    throw new AppError("Only the patient and the doctor can join this consultation.", 403);
+  }
+
+  if (appointment.mode !== APPOINTMENT_MODES.VIDEO) {
+    throw new AppError("This appointment is not a video consultation.", 400);
+  }
+
+  if (appointment.status !== APPOINTMENT_STATUS.CONFIRMED) {
+    throw new AppError(
+      `This consultation is ${appointment.status}. Only a confirmed appointment can be joined.`,
+      409
+    );
+  }
+
+  const scheduledFor = new Date(appointment.scheduledFor);
+  const opensAt = new Date(scheduledFor.getTime() - JOIN_OPENS_MINUTES_BEFORE * 60_000);
+  const closesAt = new Date(
+    scheduledFor.getTime() + (appointment.durationMinutes + JOIN_CLOSES_MINUTES_AFTER) * 60_000
+  );
+  const now = new Date();
+
+  if (now < opensAt) {
+    throw new AppError(
+      `This consultation opens at ${opensAt.toISOString()}, ${JOIN_OPENS_MINUTES_BEFORE} minutes before the scheduled time.`,
+      425
+    );
+  }
+
+  if (now > closesAt) {
+    throw new AppError("This consultation has ended.", 410);
+  }
+
+  // Minted on first join and reused thereafter, so both participants converge
+  // on one room without either side having to be "first".
+  const stored = await appointmentRepository.findByIdWithMeeting(appointmentId);
+  let roomId = stored?.meeting?.roomId;
+
+  if (!roomId) {
+    roomId = `medchain-${crypto.randomBytes(18).toString("base64url")}`;
+    await appointmentRepository.updateById(appointmentId, {
+      "meeting.roomId": roomId,
+      "meeting.startedAt": now,
+    });
+  }
+
+  await appointmentRepository.incrementParticipants(appointmentId);
+
+  const counterpart = isPatient ? appointment.doctor : appointment.patient;
+
+  return {
+    roomId,
+    // Sent to the client so the host is configured in exactly one place.
+    domain: env.JITSI_DOMAIN,
+    // The client passes these to Jitsi so neither participant has to type a
+    // display name into a third-party prompt.
+    displayName: actor.name,
+    email: actor.email,
+    role: isDoctor ? "doctor" : "patient",
+    // The doctor is the host: they admit from the waiting room and end the call.
+    isHost: isDoctor,
+    counterpartName: counterpart?.name ?? null,
+    scheduledFor: appointment.scheduledFor,
+    durationMinutes: appointment.durationMinutes,
+    opensAt,
+    closesAt,
+    recordingConsent: Boolean(stored?.meeting?.recordingConsent),
+  };
+};
+
+/**
+ * Recording is opt-in and recorded as a fact. Only the patient can give it --
+ * it is their consultation being captured.
+ */
+const setRecordingConsent = async ({ actor, appointmentId, consent }) => {
+  const { isPatient } = await loadParticipantAppointment(appointmentId, actor);
+
+  if (!isPatient) {
+    throw new AppError("Only the patient can consent to the consultation being recorded.", 403);
+  }
+
+  const updated = await appointmentRepository.updateById(appointmentId, {
+    "meeting.recordingConsent": Boolean(consent),
+  });
+
+  return { recordingConsent: Boolean(updated.meeting?.recordingConsent) };
+};
+
+/** Called when a participant leaves, so the record shows when the call ended. */
+const endConsultation = async ({ actor, appointmentId }) => {
+  const { isDoctor } = await loadParticipantAppointment(appointmentId, actor);
+
+  if (!isDoctor) {
+    throw new AppError("Only the doctor can end the consultation.", 403);
+  }
+
+  const updated = await appointmentRepository.updateById(appointmentId, {
+    "meeting.endedAt": new Date(),
+  });
+
+  return { endedAt: updated.meeting?.endedAt ?? null };
+};
+
 module.exports = {
+  JOIN_CLOSES_MINUTES_AFTER,
+  JOIN_OPENS_MINUTES_BEFORE,
   cancelAppointment,
   completeAppointment,
   confirmAppointment,
+  endConsultation,
   getAppointment,
+  getJoinDetails,
   listAppointments,
   markNoShow,
   requestAppointment,
+  setRecordingConsent,
 };

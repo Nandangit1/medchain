@@ -4,6 +4,8 @@ const { AUDIT_ACTIONS, AUDIT_OUTCOMES } = require("../constants/audit");
 const { DOCTOR_VERIFICATION_STATUS, ROLES } = require("../constants/roles");
 const userRepository = require("../repositories/userRepository");
 const auditService = require("../services/auditService");
+const mailService = require("../services/mailService");
+const mfaService = require("../services/mfaService");
 const tokenService = require("../services/tokenService");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
@@ -24,7 +26,7 @@ const createTokenPayload = (user) => ({
  * An XSS payload can therefore steal at most a token that expires shortly,
  * not a week-long session.
  */
-const sendAuthResponse = async (res, req, statusCode, user, message) => {
+const sendAuthResponse = async (res, req, statusCode, user, message, extra = {}) => {
   const token = signJwt(createTokenPayload(user));
   const refreshToken = await tokenService.issueRefreshToken(user, req);
 
@@ -33,7 +35,28 @@ const sendAuthResponse = async (res, req, statusCode, user, message) => {
   return sendSuccess(res, statusCode, message, {
     token,
     user: user.toSafeObject(),
+    /**
+     * Lets the client push a doctor or admin straight to enrolment without
+     * having to know the server's MFA policy.
+     */
+    mfaSetupRequired: mfaService.isRequiredFor(user) && !user.mfa?.enabled,
+    ...extra,
   });
+};
+
+/** Shared tail of both sign-in paths: with a second factor, and without one. */
+const completeLogin = async (res, req, user, extra = {}) => {
+  user.lastLoginAt = new Date();
+  await userRepository.save(user);
+
+  await auditService.record({
+    action: AUDIT_ACTIONS.USER_LOGIN,
+    actor: user,
+    description: user.mfa?.enabled ? "Signed in with two-factor" : "Signed in",
+    req,
+  });
+
+  return sendAuthResponse(res, req, 200, user, "Login successful.", extra);
 };
 
 const buildUserPayload = (body) => {
@@ -108,17 +131,86 @@ exports.login = catchAsync(async (req, res, next) => {
     return next(new AppError("This account has been deactivated.", 403));
   }
 
-  user.lastLoginAt = new Date();
+  /**
+   * Password accepted, but not yet a session. When a second factor is enrolled
+   * the response carries a short-lived challenge token instead of an access
+   * token, and the caller must complete POST /auth/mfa/verify.
+   */
+  if (user.mfa?.enabled) {
+    return sendSuccess(res, 200, "Enter the code from your authenticator app.", {
+      mfaRequired: true,
+      challengeToken: mfaService.issueChallengeToken(user),
+      expiresInSeconds: mfaService.CHALLENGE_TTL_SECONDS,
+    });
+  }
+
+  if (mfaService.isEnforced() && mfaService.isRequiredFor(user)) {
+    return next(
+      new AppError(
+        "Two-factor authentication is required for this role. Ask an administrator to reset your account so you can enrol.",
+        403
+      )
+    );
+  }
+
+  return completeLogin(res, req, user);
+});
+
+/**
+ * Second leg of an MFA sign-in. Accepts either a 6-digit authenticator code or
+ * one single-use backup code.
+ */
+exports.verifyMfa = catchAsync(async (req, res, next) => {
+  const { challengeToken, code } = req.body;
+
+  const userId = mfaService.verifyChallengeToken(challengeToken);
+  const user = await userRepository.findByIdWithMfa(userId);
+
+  if (!user || !user.isActive || !user.mfa?.enabled) {
+    return next(new AppError("Invalid verification token.", 401));
+  }
+
+  const codeAccepted = await mfaService.verifyCode({ sealedSecret: user.mfa.secret, code });
+  let usedBackupCode = false;
+
+  if (!codeAccepted) {
+    const index = await mfaService.matchBackupCode({
+      candidate: code,
+      hashedCodes: user.mfa.backupCodes,
+    });
+
+    if (index === -1) {
+      await auditService.record({
+        action: AUDIT_ACTIONS.USER_MFA_FAILED,
+        actor: user,
+        outcome: AUDIT_OUTCOMES.FAILURE,
+        description: "Incorrect two-factor code",
+        req,
+      });
+
+      return next(new AppError("That code is not valid.", 401));
+    }
+
+    // Burned on use. A backup code that still works after being presented once
+    // is just a second password.
+    user.mfa.backupCodes.splice(index, 1);
+    usedBackupCode = true;
+
+    await auditService.record({
+      action: AUDIT_ACTIONS.USER_MFA_BACKUP_CODE_USED,
+      actor: user,
+      description: `Backup code used; ${user.mfa.backupCodes.length} remaining`,
+      req,
+    });
+  }
+
+  user.mfa.lastVerifiedAt = new Date();
   await userRepository.save(user);
 
-  await auditService.record({
-    action: AUDIT_ACTIONS.USER_LOGIN,
-    actor: user,
-    description: "Signed in",
-    req,
+  return completeLogin(res, req, user, {
+    usedBackupCode,
+    backupCodesRemaining: user.mfa.backupCodes?.length ?? 0,
   });
-
-  return sendAuthResponse(res, req, 200, user, "Login successful.");
 });
 
 /**
@@ -296,6 +388,21 @@ exports.forgotPassword = catchAsync(async (req, res) => {
     req,
   });
 
+  await mailService.send({
+    to: user.email,
+    subject: "Reset your MedChain password",
+    title: "Reset your password",
+    body: `<p>Hello ${user.name},</p>
+      <p>We received a request to reset your MedChain password. This link is
+      valid for ${tokenService.RESET_TTL_MINUTES} minutes and can be used once.</p>
+      <p>If you did not request this, ignore this email — your password will
+      not change, and nobody can act on the request without this link.</p>`,
+    action: { label: "Choose a new password", url: resetUrl },
+  });
+
+  // Returned only outside production, where there may be no mail transport and
+  // the flow still has to be testable. In production the link exists solely in
+  // the email and the log, so the response cannot become an enumeration oracle.
   if (env.NODE_ENV !== "production") {
     return sendSuccess(res, 200, "If an account exists for that address, a reset link has been sent.", {
       resetUrl,
@@ -324,4 +431,153 @@ exports.resetPassword = catchAsync(async (req, res) => {
   });
 
   return sendAuthResponse(res, req, 200, account, "Password reset successfully.");
+});
+
+// --- Multi-factor authentication -------------------------------------------
+
+/**
+ * Step one of enrolment: mint a secret and hand back a QR code.
+ *
+ * The secret is stored as `pendingSecret` and does nothing until confirmed.
+ * Activating on generation would lock a user out the moment a scan silently
+ * failed, which is the classic way MFA rollouts create support tickets.
+ */
+exports.startMfaEnrolment = catchAsync(async (req, res, next) => {
+  const user = await userRepository.findByIdWithMfa(req.user._id);
+
+  if (user.mfa?.enabled) {
+    return next(new AppError("Two-factor authentication is already enabled.", 409));
+  }
+
+  const enrolment = await mfaService.beginEnrolment({ user });
+
+  user.mfa = { ...(user.mfa?.toObject?.() ?? user.mfa), pendingSecret: enrolment.sealedSecret };
+  await userRepository.save(user);
+
+  return sendSuccess(res, 200, "Scan this with your authenticator app.", {
+    qrDataUrl: enrolment.qrDataUrl,
+    manualEntryKey: enrolment.manualEntryKey,
+    otpauth: enrolment.otpauth,
+  });
+});
+
+/**
+ * Step two: a correct code proves the phone holds the secret, so it is
+ * promoted and backup codes are issued. The plaintext codes are shown exactly
+ * once — only their hashes are kept.
+ */
+exports.confirmMfaEnrolment = catchAsync(async (req, res, next) => {
+  const user = await userRepository.findByIdWithMfa(req.user._id);
+
+  if (user.mfa?.enabled) {
+    return next(new AppError("Two-factor authentication is already enabled.", 409));
+  }
+
+  if (!user.mfa?.pendingSecret) {
+    return next(new AppError("Start enrolment before confirming it.", 400));
+  }
+
+  if (!(await mfaService.verifyCode({ sealedSecret: user.mfa.pendingSecret, code: req.body.code }))) {
+    return next(new AppError("That code is not valid. Check your device clock and try again.", 400));
+  }
+
+  const backupCodes = await mfaService.generateBackupCodes();
+
+  user.mfa.secret = user.mfa.pendingSecret;
+  user.mfa.pendingSecret = undefined;
+  user.mfa.backupCodes = backupCodes.hashed;
+  user.mfa.enabled = true;
+  user.mfa.enrolledAt = new Date();
+  await userRepository.save(user);
+
+  await auditService.record({
+    action: AUDIT_ACTIONS.USER_MFA_ENABLED,
+    actor: user,
+    description: "Two-factor authentication enabled",
+    req,
+  });
+
+  await mailService.send({
+    to: user.email,
+    subject: "Two-factor authentication is on",
+    title: "Two-factor authentication enabled",
+    body: `<p>Hello ${user.name},</p>
+      <p>An authenticator app was just linked to your MedChain account. From now
+      on you will be asked for a 6-digit code when you sign in.</p>
+      <p>If this was not you, reset your password immediately.</p>`,
+  });
+
+  return sendSuccess(res, 200, "Two-factor authentication is now enabled.", {
+    // Shown once and never retrievable again.
+    backupCodes: backupCodes.plain,
+  });
+});
+
+/**
+ * Turning the second factor off requires the password AND a current code:
+ * a hijacked session alone must not be able to remove the control that would
+ * have stopped it.
+ */
+exports.disableMfa = catchAsync(async (req, res, next) => {
+  const user = await userRepository.findByIdWithMfa(req.user._id);
+  const account = await userRepository.findByIdWithCredentials(req.user._id);
+
+  if (!user.mfa?.enabled) {
+    return next(new AppError("Two-factor authentication is not enabled.", 400));
+  }
+
+  if (!(await account.comparePassword(req.body.password))) {
+    return next(new AppError("Incorrect password.", 401));
+  }
+
+  const codeAccepted =
+    (await mfaService.verifyCode({ sealedSecret: user.mfa.secret, code: req.body.code })) ||
+    (await mfaService.matchBackupCode({
+      candidate: req.body.code,
+      hashedCodes: user.mfa.backupCodes,
+    })) !== -1;
+
+  if (!codeAccepted) {
+    return next(new AppError("That code is not valid.", 401));
+  }
+
+  if (mfaService.isEnforced() && mfaService.isRequiredFor(user)) {
+    return next(
+      new AppError("Two-factor authentication is mandatory for your role and cannot be removed.", 403)
+    );
+  }
+
+  user.mfa = { enabled: false };
+  await userRepository.save(user);
+
+  await auditService.record({
+    action: AUDIT_ACTIONS.USER_MFA_DISABLED,
+    actor: user,
+    description: "Two-factor authentication disabled",
+    req,
+  });
+
+  await mailService.send({
+    to: user.email,
+    subject: "Two-factor authentication is off",
+    title: "Two-factor authentication disabled",
+    body: `<p>Hello ${user.name},</p>
+      <p>Two-factor authentication was just removed from your MedChain account.</p>
+      <p>If this was not you, reset your password immediately.</p>`,
+  });
+
+  return sendSuccess(res, 200, "Two-factor authentication disabled.", null);
+});
+
+/** Lets the UI render the security page without exposing any secret material. */
+exports.mfaStatus = catchAsync(async (req, res) => {
+  const user = await userRepository.findByIdWithMfa(req.user._id);
+
+  return sendSuccess(res, 200, "Two-factor status.", {
+    enabled: Boolean(user.mfa?.enabled),
+    enrolledAt: user.mfa?.enrolledAt ?? null,
+    backupCodesRemaining: user.mfa?.backupCodes?.length ?? 0,
+    requiredForRole: mfaService.isRequiredFor(user),
+    enforced: mfaService.isEnforced(),
+  });
 });

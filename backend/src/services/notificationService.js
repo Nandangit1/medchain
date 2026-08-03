@@ -1,21 +1,52 @@
+const { env } = require("../config/env");
 const logger = require("../config/logger");
 const Notification = require("../models/Notification");
+const userRepository = require("../repositories/userRepository");
 const AppError = require("../utils/AppError");
 const { buildPagination, buildPaginationMeta } = require("../utils/pagination");
+const mailService = require("./mailService");
 
 /**
  * Notification Service.
  *
  * Like the audit service, `push` never throws — failing to notify someone must
  * not undo the action that triggered it.
+ *
+ * One call fans out to two channels. In-app is always written; email is opt-in
+ * per call via `email: true`, because not every notification deserves an inbox
+ * entry — "a doctor opened your record" is useful in the bell menu and noise in
+ * a mailbox.
  */
-const push = async ({ user, type, title, message, link }) => {
+const push = async ({ user, type, title, message, link, email = false }) => {
+  let notification = null;
+
   try {
-    return await Notification.create({ user, type, title, message, link });
+    notification = await Notification.create({ user, type, title, message, link });
   } catch (error) {
     logger.error("Failed to create notification", { type, reason: error.message });
-    return null;
   }
+
+  if (email) {
+    // Deliberately not awaited into the caller's critical path beyond this
+    // point: the in-app record is already durable, and mail is best-effort.
+    try {
+      const recipient = await userRepository.findById(user);
+
+      if (recipient?.email) {
+        await mailService.send({
+          to: recipient.email,
+          subject: title,
+          title,
+          body: `<p>Hello ${recipient.name},</p><p>${message}</p>`,
+          action: link ? { label: "Open MedChain", url: `${env.APP_URL}${link}` } : undefined,
+        });
+      }
+    } catch (error) {
+      logger.error("Failed to email notification", { type, reason: error.message });
+    }
+  }
+
+  return notification;
 };
 
 const list = async ({ actor, query }) => {

@@ -29,6 +29,16 @@ const findByIdWithStatus = (userId) => User.findById(userId).select("+isActive")
 const findByIdWithCredentials = (userId) =>
   User.findById(userId).select("+password +isActive").exec();
 
+/**
+ * Includes the sealed TOTP secret and the backup-code hashes. Only the MFA
+ * flows should call this — everything else must not be able to read the
+ * material needed to mint valid second-factor codes.
+ */
+const findByIdWithMfa = (userId) =>
+  User.findById(userId)
+    .select("+isActive +mfa.secret +mfa.pendingSecret +mfa.backupCodes")
+    .exec();
+
 const findByEmailWithStatus = (email) =>
   User.findOne({ email: String(email).toLowerCase() }).select("+isActive").exec();
 
@@ -122,6 +132,7 @@ module.exports = {
   findByEmailWithStatus,
   findById,
   findByIdWithCredentials,
+  findByIdWithMfa,
   findByIdWithStatus,
   findDoctorById,
   findVerifiedDoctors,

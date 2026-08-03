@@ -29,6 +29,14 @@
     "test:all": "npm --prefix backend run test:all && npm --prefix blockchain test",
     "lint": "npm --prefix backend run lint",
 
+    "//site": "Always-on mode: starts the whole stack detached, so it outlives this terminal.",
+    "site": "powershell -ExecutionPolicy Bypass -File scripts/start-medchain.ps1",
+    "site:stop": "powershell -ExecutionPolicy Bypass -File scripts/start-medchain.ps1 -Stop",
+    "site:status": "powershell -ExecutionPolicy Bypass -File scripts/start-medchain.ps1 -Status",
+    "site:rebuild": "powershell -ExecutionPolicy Bypass -File scripts/start-medchain.ps1 -Build",
+    "site:install": "powershell -ExecutionPolicy Bypass -File scripts/start-medchain.ps1 -Install",
+    "site:uninstall": "powershell -ExecutionPolicy Bypass -File scripts/start-medchain.ps1 -Uninstall",
+
     "hostname": "powershell -ExecutionPolicy Bypass -File scripts/setup-hostname.ps1"
   }
 }

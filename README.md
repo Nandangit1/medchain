@@ -106,6 +106,46 @@ local IPFS driver.
 
 ---
 
+## Always-on mode
+
+If you just want the site to *be there* — surviving a closed editor, a closed
+terminal and a reboot — skip the five manual steps below and run:
+
+```powershell
+npm run site:install
+```
+
+That starts the whole stack detached and registers a logon task, so
+**http://localhost:3000** comes back by itself every time you sign in to
+Windows. No Administrator rights needed; if the task store refuses an
+unelevated write the script falls back to a Startup-folder entry.
+
+```powershell
+npm run site            # start now, without installing autostart
+npm run site:status     # what is up, and whether autostart is installed
+npm run site:stop       # stop everything
+npm run site:rebuild    # rebuild the frontend, then start
+npm run site:uninstall  # remove autostart (leaves the site running)
+```
+
+The stack runs in production shape: one Node process serves both the built
+React app and the API on port 3000.
+
+**Why this needs a script rather than a shortcut.** Hardhat keeps its chain in
+memory, so every restart destroys the contract and orphans the on-chain ids
+stored in MongoDB — records would show as unverifiable. On each start the
+script asks the chain whether `CONTRACT_ADDRESS` still holds code; when it does
+not, it redeploys, writes the new address into `backend/.env`, and re-anchors
+every live record before the site accepts traffic. When the chain is intact all
+of that is skipped and startup takes a couple of seconds.
+
+Logs land in `.local/logs/` (`app.log`, `hardhat.log`, `backfill.log`).
+
+> For day-to-day development use the Quick start below instead — always-on mode
+> serves a build, so code edits do not appear until `npm run site:rebuild`.
+
+---
+
 ## Quick start
 
 ### 1. Start MongoDB

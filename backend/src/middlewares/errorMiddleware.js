@@ -1,4 +1,5 @@
 const { env } = require("../config/env");
+const logger = require("../config/logger");
 
 const handleDuplicateFields = (error) => {
   const fields = Object.keys(error.keyValue || {}).join(", ");
@@ -70,13 +71,31 @@ const normalizeError = (error) => {
   };
 };
 
-module.exports = (error, _req, res, _next) => {
+module.exports = (error, req, res, _next) => {
   const normalizedError = normalizeError(error);
   const statusCode = normalizedError.statusCode;
   const status = String(statusCode).startsWith("4") ? "fail" : "error";
 
   if (env.NODE_ENV !== "production") {
     console.error(error);
+  }
+
+  /**
+   * 500s are logged with their stack. In production the client is told only
+   * "Something went wrong", so without this the single copy of what actually
+   * broke exists nowhere -- the server is silent about its own bugs. 4xx are
+   * left out: they are the client's mistake, already described in the response,
+   * and logging them lets anyone fill the disk with bad requests.
+   */
+  if (statusCode >= 500) {
+    logger.error("Unhandled request error", {
+      method: req.method,
+      path: req.originalUrl,
+      userId: req.user?._id ? String(req.user._id) : undefined,
+      name: error.name,
+      reason: error.message,
+      stack: error.stack,
+    });
   }
 
   res.status(statusCode).json({

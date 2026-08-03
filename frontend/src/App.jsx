@@ -40,6 +40,8 @@ const AdminBlockchain = lazy(() => import("./pages/admin/Blockchain"));
 const AdminAuditLog = lazy(() => import("./pages/admin/AuditLog"));
 
 const Profile = lazy(() => import("./pages/Profile"));
+const Security = lazy(() => import("./pages/Security"));
+const Consultation = lazy(() => import("./pages/Consultation"));
 
 /** Sends an already-authenticated visitor to their own dashboard. */
 const RedirectHome = () => {
@@ -116,6 +118,12 @@ const App = () => (
         }
       >
         <Route path="/profile" element={<Profile />} />
+        <Route path="/security" element={<Security />} />
+        {/*
+          Not nested under a role: participation decides who may join, and the
+          server enforces that both parties are named on the appointment.
+        */}
+        <Route path="/consultation/:appointmentId" element={<Consultation />} />
       </Route>
 
       <Route path="*" element={<NotFound />} />

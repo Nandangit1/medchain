@@ -6,11 +6,14 @@ const { protect } = require("../middlewares/authMiddleware");
 const validateRequest = require("../middlewares/validateRequest");
 const {
   changePasswordRules,
+  disableMfaRules,
   forgotPasswordRules,
   loginRules,
+  mfaCodeRules,
   registerRules,
   resetPasswordRules,
   updateMeRules,
+  verifyMfaRules,
 } = require("../validators/authValidators");
 
 const router = express.Router();
@@ -53,7 +56,30 @@ router.post(
   authController.resetPassword
 );
 
+/**
+ * Second leg of sign-in. Rate limited like the first: without it, a stolen
+ * password plus an unlimited code endpoint is a 6-digit brute force.
+ */
+router.post(
+  "/mfa/verify",
+  credentialLimiter,
+  verifyMfaRules,
+  validateRequest,
+  authController.verifyMfa
+);
+
 router.use(protect);
+
+router.get("/mfa", authController.mfaStatus);
+router.post("/mfa/setup", authController.startMfaEnrolment);
+router.post("/mfa/enable", mfaCodeRules, validateRequest, authController.confirmMfaEnrolment);
+router.post(
+  "/mfa/disable",
+  credentialLimiter,
+  disableMfaRules,
+  validateRequest,
+  authController.disableMfa
+);
 
 router.get("/me", authController.getMe);
 router.patch("/me", updateMeRules, validateRequest, authController.updateMe);
