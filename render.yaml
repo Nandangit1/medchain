@@ -24,7 +24,9 @@ services:
     runtime: node
     plan: free
     region: singapore
-    branch: main
+    # Must match a branch that actually exists on GitHub. This repository uses
+    # `master`, not `main` — Render fails to find the blueprint otherwise.
+    branch: master
 
     buildCommand: npm --prefix frontend ci && npm --prefix frontend run build && npm --prefix backend ci --omit=dev
     startCommand: node backend/src/server.js
