@@ -28,7 +28,13 @@ services:
     # `master`, not `main` — Render fails to find the blueprint otherwise.
     branch: master
 
-    buildCommand: npm --prefix frontend ci && npm --prefix frontend run build && npm --prefix backend ci --omit=dev
+    # `--include=dev` on the frontend install is load-bearing, not belt-and-braces.
+    # NODE_ENV=production is set below and npm honours it during install, so a
+    # plain `npm ci` here skips devDependencies -- which is where vite lives.
+    # The build then dies with "sh: 1: vite: not found" after installing only
+    # the 12 runtime packages. The backend install keeps --omit=dev because it
+    # genuinely wants runtime deps only.
+    buildCommand: npm --prefix frontend ci --include=dev && npm --prefix frontend run build && npm --prefix backend ci --omit=dev
     startCommand: node backend/src/server.js
 
     healthCheckPath: /api/v1/health
