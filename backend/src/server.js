@@ -4,6 +4,7 @@ const app = require("./app");
 const { canServeFrontend } = require("./app");
 const { connectDatabase } = require("./config/database");
 const { env } = require("./config/env");
+const { seedAdminOnBoot } = require("./services/seedService");
 
 let server;
 
@@ -48,6 +49,10 @@ const banner = () => {
 
 const startServer = async () => {
   await connectDatabase();
+
+  // Before accepting traffic, so a hosted first deploy is never briefly live
+  // with no administrator. No-op unless SEED_ADMIN_ON_BOOT is set.
+  await seedAdminOnBoot();
 
   // 0.0.0.0 rather than the default, so LAN devices can reach it.
   server = app.listen(env.PORT, "0.0.0.0", banner);

@@ -45,9 +45,21 @@ services:
       - key: TRUST_TLS
         value: "true"
 
-      # Indexes are built once by hand on a managed cluster.
-      # See docs/deployment-guide.md section 2.
+      # Left ON for the first deploy. A fresh Atlas database has no indexes at
+      # all, and two of them are load-bearing rather than merely fast: the
+      # partial uniques on access grants and appointment slots. Disabling index
+      # building before they exist gives you a site that accepts duplicate
+      # registrations. Once `npm run ensure:indexes` has been run against the
+      # cluster (deployment-guide section 2), flip this to "true" so restarts
+      # stop re-checking them.
       - key: DISABLE_AUTO_INDEX
+        value: "false"
+
+      # Registration only ever mints patients and doctors, so the administrator
+      # has to be seeded. The free plan has no pre-deploy command and no shell,
+      # which leaves startup as the only place this can happen. The seed is
+      # idempotent and never touches an existing account's password.
+      - key: SEED_ADMIN_ON_BOOT
         value: "true"
 
       # --- Secrets: entered in the Render dashboard, never committed ---------
@@ -69,6 +81,9 @@ services:
       - key: CUSTODIAL_WALLET_SEED
         sync: false
 
+      # ADMIN_NAME is not a secret, but the seeder requires all three.
+      - key: ADMIN_NAME
+        value: MedChain Administrator
       - key: ADMIN_EMAIL
         sync: false
       - key: ADMIN_PASSWORD
@@ -110,3 +125,64 @@ services:
           type: web
           name: medchain
           envVarKey: RENDER_EXTERNAL_URL
+
+      # Set explicitly rather than left to fall back to the first CORS origin.
+      # CORS_ORIGIN is a SET of permitted origins; a password-reset link needs
+      # exactly one, and would be built from a comma-joined string the moment a
+      # second origin is added here.
+      - key: APP_URL
+        fromService:
+          type: web
+          name: medchain
+          envVarKey: RENDER_EXTERNAL_URL
+
+      # --- Email -----------------------------------------------------------
+      # Left off, which routes every message to the application log instead of
+      # a mailbox. Password reset still works: the link appears in the Render
+      # log stream. To use a real inbox, add SMTP_HOST, SMTP_USER and
+      # SMTP_PASSWORD in the dashboard and flip this to "true" -- with Gmail
+      # that means an app password, not the account one.
+      #
+      # Those three are deliberately NOT declared here. Every `sync: false` key
+      # becomes a field the Blueprint wizard asks for up front, and a first
+      # deploy should not have to answer questions about features it is not
+      # turning on. Adding them later in the dashboard works identically.
+      - key: MAIL_ENABLED
+        value: "false"
+      - key: SMTP_PORT
+        value: "587"
+      - key: MAIL_FROM
+        value: MedChain <no-reply@medchain.local>
+
+      # --- Two-factor authentication ---------------------------------------
+      # Prompting is on for clinicians and admins; ENFORCEMENT is deliberately
+      # off. Turning enforcement on before anyone has enrolled locks the
+      # deployment out of its own admin account. Enrol first, then flip it.
+      - key: MFA_REQUIRED_ROLES
+        value: doctor,admin
+      - key: MFA_ENFORCED
+        value: "false"
+
+      # --- Video consultation ----------------------------------------------
+      # The public Jitsi instance needs no account and no API key. Point this
+      # at a self-hosted deployment to keep consultation media in your own
+      # infrastructure; that value is the only change required.
+      - key: JITSI_DOMAIN
+        value: meet.jit.si
+
+      # --- ABDM ------------------------------------------------------------
+      # "mock" validates the ABHA format and its Verhoeff checksum offline and
+      # never claims an identity was verified -- the UI says so on the page.
+      # For the real gateway set this to "nha" and add ABDM_CLIENT_ID and
+      # ABDM_CLIENT_SECRET in the dashboard; that needs a registered sandbox
+      # client, which is an application process rather than a signup.
+      - key: ABHA_DRIVER
+        value: mock
+
+      # --- Ambient scribe ---------------------------------------------------
+      # "mock" derives the draft note from the transcript offline and invents
+      # no clinical content. For the real model set this to "claude" and add
+      # ANTHROPIC_API_KEY in the dashboard. Either way a clinician signs before
+      # any record exists -- the driver only affects the draft.
+      - key: SCRIBE_DRIVER
+        value: mock

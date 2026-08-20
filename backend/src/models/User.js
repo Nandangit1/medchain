@@ -169,12 +169,27 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ role: 1 });
 userSchema.index({ walletAddress: 1 }, { unique: true, sparse: true });
 userSchema.index({ "doctorProfile.verificationStatus": 1 });
+/**
+ * One licence number per doctor.
+ *
+ * `sparse` is deliberately absent: MongoDB rejects an index that specifies both
+ * `sparse` and `partialFilterExpression` ("cannot mix" — error 67), so the
+ * earlier spec that carried both was refused by the server and this index has
+ * never actually existed. Uniqueness was therefore unenforced, and two doctors
+ * could register the same licence number.
+ *
+ * The partial filter does both jobs on its own. The `$type` clause is what
+ * `sparse` was reaching for: without it, every doctor whose licence is absent
+ * or null indexes the same key and the second one collides.
+ */
 userSchema.index(
   { "doctorProfile.medicalLicenseNumber": 1 },
   {
     unique: true,
-    sparse: true,
-    partialFilterExpression: { role: ROLES.DOCTOR },
+    partialFilterExpression: {
+      role: ROLES.DOCTOR,
+      "doctorProfile.medicalLicenseNumber": { $type: "string" },
+    },
   }
 );
 

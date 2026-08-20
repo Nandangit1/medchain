@@ -16,7 +16,10 @@ State this plainly rather than discovering it under load:
 | In-process nonce counter | single instance only | Per-instance key or a queue |
 | In-memory rate limiting | per-process | Redis-backed store |
 | `CUSTODIAN_ROLE` held by backend | weakens ownership claim | Revoke once wallets exist |
-| No mail transport | reset links go to logs | SMTP or a mail API |
+| `MAIL_ENABLED=false` | reset links go to logs | SMTP credentials, then set it true |
+| `ABHA_DRIVER=mock` | no identity is really verified | Registered ABDM sandbox client |
+| `SCRIBE_DRIVER=mock` | draft notes are extractive, not generated | `claude` plus `ANTHROPIC_API_KEY` |
+| Single-contributor ZK setup | demo-grade trusted setup | Multi-party phase 2 ceremony |
 | No HTTPS | cookies not `secure` | TLS terminating proxy |
 
 ---
@@ -58,46 +61,45 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/blockchain_telemedicine?retryWrites=true&w=majority
 ```
 
-6. Set `NODE_ENV=production`, which disables `autoIndex`. **Build indexes once
-   manually** before going live, or the first queries will do full collection
-   scans:
+6. Build the indexes. Point the script at the cluster and run it once — it reads
+   every index off the Mongoose schemas, so it cannot drift from what the
+   application actually queries through:
 
-```javascript
-// mongosh against the production database
-db.users.createIndex({ email: 1 }, { unique: true })
-db.users.createIndex({ role: 1 })
-db.users.createIndex({ "doctorProfile.verificationStatus": 1 })
-db.users.createIndex({ "doctorProfile.medicalLicenseNumber": 1 },
-  { unique: true, sparse: true, partialFilterExpression: { role: "doctor" } })
-db.users.createIndex({ walletAddress: 1 }, { unique: true, sparse: true })
-
-db.medicalrecords.createIndex({ patient: 1, createdAt: -1 })
-db.medicalrecords.createIndex({ patient: 1, recordType: 1 })
-db.medicalrecords.createIndex({ "integrity.fileHash": 1 })
-db.medicalrecords.createIndex({ "storage.cid": 1 })
-db.medicalrecords.createIndex({ "blockchain.status": 1 })
-
-db.accesspermissions.createIndex({ record: 1, doctor: 1 },
-  { unique: true, partialFilterExpression: { revokedAt: null } })
-db.accesspermissions.createIndex({ doctor: 1, revokedAt: 1 })
-
-db.tokens.createIndex({ tokenHash: 1 })
-db.tokens.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
-
-db.notifications.createIndex({ user: 1, readAt: 1, createdAt: -1 })
-db.notifications.createIndex({ createdAt: 1 }, { expireAfterSeconds: 7776000 })
-
-db.auditlogs.createIndex({ createdAt: -1 })
-db.auditlogs.createIndex({ actor: 1, createdAt: -1 })
-db.auditlogs.createIndex({ action: 1 })
-db.auditlogs.createIndex({ category: 1 })
-
-db.appointments.createIndex({ doctor: 1, scheduledFor: 1 },
-  { unique: true, partialFilterExpression: { status: { $in: ["requested", "confirmed"] } } })
+```bash
+cd backend
+MONGODB_URI="mongodb+srv://..." npm run ensure:indexes
 ```
 
-Getting the two **partial** unique indexes right matters: without them,
-re-granting a revoked doctor and reusing a cancelled appointment slot both fail.
+It prints one line per collection and only ever adds; an index you created by
+hand for an ad-hoc report is left alone.
+
+> A hand-maintained list is what this replaces, and the reason is worth
+> recording. The list previously printed here specified the doctor-licence
+> index with **both** `sparse` and `partialFilterExpression`. MongoDB refuses
+> that combination outright (error 67, "cannot mix"), so that index had never
+> been created in any database — and the uniqueness it claimed to enforce was
+> not being enforced at all. The schema now carries the `$type` clause that
+> `sparse` was reaching for.
+
+Three of these indexes are load-bearing rather than merely fast:
+
+| Index | Without it |
+| --- | --- |
+| `accesspermissions { record, doctor }` unique on non-revoked rows | re-granting a previously revoked doctor fails on a duplicate key |
+| `appointments { doctor, scheduledFor }` unique on live statuses | rebooking a cancelled slot fails the same way |
+| `users { doctorProfile.medicalLicenseNumber }` unique among doctors | two doctors can register the same licence number |
+
+Each is a **partial** unique. The partial filter is the whole point — a plain
+unique index on any of the three breaks the ordinary case.
+
+7. Only once that has run, set `DISABLE_AUTO_INDEX=true` so restarts stop
+   re-checking indexes on every boot.
+
+> **`DISABLE_AUTO_INDEX` is the control, not `NODE_ENV`.** Index building is
+> keyed off that variable alone (`config/database.js`), so setting
+> `NODE_ENV=production` does *not* switch it off. Leave it `false` for the first
+> deploy: a fresh database with index building disabled is one that accepts
+> duplicate registrations.
 
 ---
 
@@ -180,6 +182,81 @@ records silently accumulate as `pending`. Monitor its balance.
 
 ---
 
+## 4b. The short path — Render blueprint
+
+`render.yaml` in the repository root describes the whole service, so Render can
+provision it without any of the manual server work in sections 5–7. This is the
+route to take for a demo or a viva; sections 5–7 describe running it on your own
+infrastructure instead.
+
+**What you must do yourself** — these need your accounts, and nobody can do them
+on your behalf:
+
+1. Push to GitHub (already done: `github.com/Nandangit1/medchain`).
+2. Create a free MongoDB Atlas cluster. Under **Network Access** allow
+   `0.0.0.0/0` — Render's free tier has no static egress IP, so an allow-list
+   cannot be narrowed here. Compensate with a strong database password and a
+   user scoped to `readWrite` on one database.
+3. Create a Pinata account and an API key with `pinFileToIPFS` and `unpin`.
+4. On render.com: **New → Blueprint**, select the repository, and fill in the
+   values marked `sync: false` when prompted:
+
+```
+MONGODB_URI          from Atlas
+JWT_SECRET           node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+FILE_ENCRYPTION_KEY  same command — back this up outside the platform
+CUSTODIAL_WALLET_SEED same command
+ADMIN_EMAIL          the account you will sign in as
+ADMIN_PASSWORD       a real password, not the one in the repository
+PINATA_JWT           from Pinata
+PINATA_GATEWAY_URL   your dedicated gateway
+```
+
+The wizard also asks for `BLOCKCHAIN_RPC_URL`, `CONTRACT_ADDRESS` and
+`REGISTRAR_PRIVATE_KEY`. Leave them blank for now — `BLOCKCHAIN_ENABLED` is
+`false` in the blueprint, so nothing reads them until you have a contract on a
+public testnet (section 4).
+
+Everything else has a working offline default and is deliberately **not**
+declared in the blueprint, because each `sync: false` key becomes another
+question the wizard asks before a first deploy. Add these in the Render
+dashboard if and when you want the feature:
+
+| Feature | Add | And set |
+| --- | --- | --- |
+| Real email | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` | `MAIL_ENABLED=true` |
+| Real ABHA identity | `ABDM_CLIENT_ID`, `ABDM_CLIENT_SECRET` | `ABHA_DRIVER=nha` |
+| Model-generated notes | `ANTHROPIC_API_KEY` | `SCRIBE_DRIVER=claude` |
+
+5. Deploy. The blueprint sets `branch: master`, and the health check at
+   `/api/v1/health` gates the release.
+
+**What happens automatically**, and why the blueprint is written this way:
+
+- `SEED_ADMIN_ON_BOOT=true` creates the administrator during startup. The free
+  plan has no pre-deploy command and no shell, so startup is the only place it
+  can happen — and registration only ever mints patients and doctors, so
+  without it the site would come up with no way in. The seed is idempotent and
+  never touches an existing account's password, so redeploying does not reset
+  your credentials.
+- `DISABLE_AUTO_INDEX=false` for the first deploy, so the fresh Atlas database
+  gets its indexes — including the three partial uniques in section 2. Once
+  `npm run ensure:indexes` has been run against the cluster, flip it to `true`.
+- `CORS_ORIGIN` and `APP_URL` are both filled from `RENDER_EXTERNAL_URL`, so
+  the public origin is never hardcoded and reset links point at the right host.
+- `TRUST_TLS=true`, correct here because Render terminates TLS.
+
+**Free-tier caveats**, worth knowing before an examiner sees them:
+
+- The instance sleeps after ~15 minutes idle; the next request takes 30–60
+  seconds. Say so rather than letting it look broken.
+- The filesystem is ephemeral, which is why `IPFS_DRIVER=pinata` is not
+  optional there — the local driver would lose every file on each restart.
+- With `MAIL_ENABLED=false`, password-reset links appear in the Render log
+  stream rather than an inbox. That is recoverable, just not self-service.
+
+---
+
 ## 5. Backend
 
 ```bash
@@ -251,9 +328,22 @@ Hashed asset filenames make the long cache safe; `index.html` must not be cached
 
 ## 7. TLS and cookies
 
-The refresh cookie is issued with `secure: true` when `NODE_ENV=production`, so
-**without HTTPS the browser will drop it and sessions will not persist.** TLS is
-not optional.
+The refresh cookie is issued with `secure: env.TRUST_TLS`
+(`services/tokenService.js`), so **over plain HTTP with `TRUST_TLS=true` the
+browser drops the cookie and sessions will not persist.**
+
+`TRUST_TLS` defaults to true when `NODE_ENV=production`, but it is a separate
+switch and the two do come apart in practice — `start:site` runs
+`NODE_ENV=production` with `TRUST_TLS=false` on purpose, because a LAN demo on
+port 80 has no certificate. Set it to match reality, not the build mode:
+
+| Deployment | `TRUST_TLS` |
+| --- | --- |
+| Behind Render, nginx, or any TLS terminator | `true` |
+| LAN or localhost demo over plain http | `false` |
+
+It controls one more thing besides the cookie flag: whether the CSP asks the
+browser to upgrade requests to https, which breaks a site served over http.
 
 The API and frontend should share a parent domain, or the `SameSite=Strict`
 cookie will not be sent. If they must be on unrelated domains, `SameSite=None`
@@ -269,13 +359,29 @@ curl https://api.medchain.example.com/api/v1/health
 
 Expect `database: connected`, `ipfs.driver: pinata`, `blockchain.connected: true`.
 
-- [ ] Seed the admin, then **change its password immediately** — the default is
-      in the repository.
+- [ ] Sign in as the administrator. On Render the boot seed creates it; check
+      the log for "Seeded the administrator account on boot." If the line reads
+      "boot seed failed", the site is up but has no admin — run
+      `MONGODB_URI=... npm run seed:admin` locally against the same cluster.
+- [ ] **Change the admin password**, and never deploy with the one in the
+      repository.
+- [ ] `npm run ensure:indexes` against the cluster, then set
+      `DISABLE_AUTO_INDEX=true`.
 - [ ] Register a patient, upload a file, confirm `status: confirmed` and a real
       transaction on Etherscan.
 - [ ] Verify a doctor, share, download, revoke — confirm 403 after revocation.
+- [ ] Try to register a second doctor with an existing licence number; expect a
+      duplicate-key rejection. This proves the partial unique index is really
+      there, which is the one that was silently missing before.
 - [ ] Confirm the audit log records all of it.
 - [ ] Confirm a page refresh keeps the session (proves the cookie works over TLS).
+- [ ] Enrol MFA for the admin **before** setting `MFA_ENFORCED=true`. Enforcing
+      it first locks the deployment out of its own admin account.
+- [ ] Request a password reset and confirm the link arrives — in the inbox with
+      `MAIL_ENABLED=true`, in the log stream otherwise.
+- [ ] Issue a selective-disclosure proof and verify it while signed out. This
+      exercises the ZK artefacts under `blockchain/build/`, which ship in git
+      precisely so a fresh deploy can do this.
 - [ ] `npm run backfill:anchors` returns "nothing to backfill".
 - [ ] Revoke `CUSTODIAN_ROLE` if patients hold their own wallets.
 - [ ] Set up monitoring: registrar gas balance, `blockchain.status: failed`

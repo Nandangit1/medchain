@@ -10,6 +10,8 @@
     "//start:site": "Serves frontend/dist and the API from one port. Run the frontend build first.",
     "start:site": "node src/site.js",
     "seed:admin": "node src/scripts/seedAdmin.js",
+    "//ensure:indexes": "Builds every schema-declared index. Run once against a managed cluster before setting DISABLE_AUTO_INDEX=true.",
+    "ensure:indexes": "node src/scripts/ensureIndexes.js",
     "backfill:anchors": "node src/scripts/backfillAnchors.js",
     "test": "node -r dotenv/config --test \"tests/unit.test.js\"",
     "test:unit": "node -r dotenv/config --test \"tests/unit.test.js\"",

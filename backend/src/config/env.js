@@ -166,6 +166,17 @@ const env = {
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   DISABLE_AUTO_INDEX: String(process.env.DISABLE_AUTO_INDEX || "false").toLowerCase() === "true",
   /**
+   * Runs the idempotent admin seed during startup.
+   *
+   * Off by default: locally the seeder is a deliberate `npm run seed:admin`
+   * step. Managed platforms build from a blueprint and then run exactly one
+   * command, with no shell available afterwards — there, a first deploy against
+   * an empty database would otherwise come up with no administrator and no way
+   * to create one, since registration only mints patients and doctors.
+   */
+  SEED_ADMIN_ON_BOOT:
+    String(process.env.SEED_ADMIN_ON_BOOT || "false").toLowerCase() === "true",
+  /**
    * Set only when the app is genuinely behind TLS. It controls the `secure`
    * cookie flag and whether CSP asks the browser to upgrade requests to https —
    * both of which break a site served over plain http.

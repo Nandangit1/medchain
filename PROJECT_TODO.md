@@ -1,9 +1,14 @@
 # Blockchain-Based Secure Telemedicine System — Status
 
-Last updated: 2026-07-30 · **All 11 modules complete**
+Last updated: 2026-08-20 · **All 11 modules complete, plus the August feature set**
 
 144 automated tests passing: 32 unit, 74 API integration, 38 smart contract.
 Backend lint clean. Frontend builds clean with route-level code splitting.
+
+> The 144 figure predates the August additions — email, MFA, video, ABDM/FHIR,
+> selective disclosure and the ambient scribe are covered by manual verification
+> and the production-path check in the deployment guide, not by automated tests.
+> Listed as an outstanding item in section 4 rather than left to be inferred.
 
 ---
 
@@ -81,7 +86,11 @@ Each of these is documented rather than hidden, and each has a prepared answer i
 | ~~M1–M2 controllers bypass repositories~~ | **CLOSED.** `authController`, `adminController` and `doctorService` now go through `userRepository`. No controller imports a Mongoose model. | Q20 |
 | No frontend component tests | UI verified by build plus manual walkthrough. | testing-guide |
 | Coverage not instrumented | No c8/nyc configured. | testing-guide |
-| No mail transport | Reset links are written to the application log. | authController |
+| ~~No mail transport~~ | **CLOSED.** `mailService` sends over SMTP. Left off by default (`MAIL_ENABLED=false`), which logs the message instead — so reset stays recoverable with no SMTP account. | deployment-guide §0 |
+| ~~Doctor licence uniqueness unenforced~~ | **CLOSED.** The index specified `sparse` and `partialFilterExpression` together, which MongoDB refuses outright (error 67), so it had never been created in any database and two doctors could share a licence number. The partial filter now carries a `$type` clause instead. | `models/User.js` |
+| The Aug-2026 features are untested | ~6,300 lines — MFA, ABDM/FHIR, ZK, scribe, mail — carry no automated tests. The 144 figure predates them. | §4 |
+| ZK trusted setup is single-contributor | Fine for a demo; clinical use needs a multi-party phase 2 ceremony. | `scripts/buildCircuit.js` |
+| Three of five proof predicates disclose | Only `lt` and `lte` have a circuit. The other three carry an opening and are labelled `mode: "disclosure"` in the UI before the choice is made. | `zkService` |
 
 ---
 
@@ -91,14 +100,46 @@ Not required for submission; listed in rough order of value.
 
 - [ ] Frontend component tests (Vitest + React Testing Library)
 - [ ] Coverage reporting (`c8`)
+- [ ] Backend tests for the Aug-2026 features (MFA, ABDM/FHIR, ZK, scribe, mail)
 - [x] ~~Migrate `authController` / `adminController` onto repositories~~
 - [x] ~~Magic-byte file-type sniffing~~
+- [x] ~~SMTP transport for password-reset emails~~ — `mailService`, off by default
 - [ ] Deploy to Sepolia and record the address in the report
 - [ ] Switch `IPFS_DRIVER=pinata` and verify against real IPFS
-- [ ] SMTP transport for password-reset emails
 - [ ] Redis-backed rate limiting
-- [ ] Docker Compose for one-command startup
+- [x] ~~Docker Compose for one-command startup~~ — `docker-compose.yml`
 - [ ] Accessibility audit (axe) and a keyboard-only pass
+
+---
+
+## 4b. Deploying it
+
+The blueprint in `render.yaml` provisions the whole service; the walkthrough is
+[`docs/deployment-guide.md`](docs/deployment-guide.md) section 4b. What is
+already handled versus what still needs your accounts:
+
+**Handled by the blueprint**
+
+- The administrator is seeded during startup (`SEED_ADMIN_ON_BOOT`). Render's
+  free plan has no pre-deploy command and no shell, and registration only mints
+  patients and doctors — without this a first deploy has no way in.
+- Indexes build on the first deploy, then `npm run ensure:indexes` reads them
+  off the schemas so the list cannot drift.
+- `CORS_ORIGIN` and `APP_URL` come from `RENDER_EXTERNAL_URL`; `TRUST_TLS=true`.
+
+**Still yours** — these need accounts nobody else can create:
+
+- [ ] MongoDB Atlas cluster; allow `0.0.0.0/0` under Network Access, since
+      Render's free tier has no static egress IP. Compensate with a strong
+      password and a `readWrite`-scoped user.
+- [ ] Pinata account and JWT. Not optional in production — Render's filesystem
+      is ephemeral, so the local IPFS driver would lose every file on restart.
+- [ ] Generate fresh `JWT_SECRET`, `FILE_ENCRYPTION_KEY`, `CUSTODIAL_WALLET_SEED`
+      and **back the last two up outside the platform**.
+- [ ] A real `ADMIN_PASSWORD`. Not the one in this repository.
+- [ ] Sepolia: fund a deployer (~2.15M gas), `npm run deploy:sepolia`, then set
+      `CONTRACT_ADDRESS`, `REGISTRAR_PRIVATE_KEY`, `BLOCKCHAIN_ENABLED=true`
+      and run `npm run backfill:anchors`.
 
 ---
 
