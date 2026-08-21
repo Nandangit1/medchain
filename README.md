@@ -1,4 +1,4 @@
-# Blockchain-Based Secure Telemedicine System
+# MedChain — Blockchain-Based Secure Telemedicine System
 
 A telemedicine platform where patients own their medical data. Reports are
 encrypted client-side of the storage boundary, stored on IPFS, and anchored on
@@ -6,6 +6,15 @@ Ethereum so that every upload and every access grant is tamper-evident and
 independently verifiable.
 
 > BE Final Year Project · Node.js · Express · MongoDB · Solidity · IPFS · React
+
+**Live:** https://medchain-y4k0.onrender.com — deployed from `render.yaml`
+against MongoDB Atlas and Pinata. Blockchain anchoring is off there until the
+contract is on a public testnet; records still encrypt, store and verify, and
+sit at `blockchain.status: "pending"` until it is enabled.
+
+> The free tier sleeps after ~15 minutes idle, so the first request afterwards
+> takes 30–60 seconds. Atlas also pauses a free cluster after prolonged
+> inactivity. Wake both before a demo rather than during one.
 
 ---
 
@@ -320,6 +329,11 @@ Base URL: `http://localhost:5000/api/v1`
 | Patient | `GET /patients/me/dashboard` · `GET /patients/me/grants` · `GET /patients/me/wallet` |
 | Doctor | `GET /doctors/directory` · `GET /doctors/me/dashboard` · `GET /doctors/me/patients` · `GET /doctors/me/records` · `GET /doctors/me/diagnoses` · `POST /doctors/records/:id/diagnoses` · `POST /doctors/patients/:id/prescriptions` |
 | Appointments | `POST /appointments` · `GET /appointments` · `GET /appointments/:id` · `PATCH /appointments/:id/confirm` · `PATCH /appointments/:id/cancel` · `PATCH /appointments/:id/complete` · `PATCH /appointments/:id/no-show` |
+| Video | `GET /appointments/:id/join` · `PATCH /appointments/:id/recording-consent` · `PATCH /appointments/:id/end-call` |
+| MFA | `GET /auth/mfa` · `POST /auth/mfa/setup` · `POST /auth/mfa/enable` · `POST /auth/mfa/disable` · `POST /auth/mfa/verify` |
+| ABDM / DPDP | `GET /abdm/privacy-notice` · `POST /abdm/abha/request-otp` · `POST /abdm/abha/link` · `DELETE /abdm/abha` · `GET /abdm/fhir/me` · `GET /abdm/fhir/DocumentReference/:recordId` · `GET /abdm/me/export` · `DELETE /abdm/me` |
+| Proofs | `POST /proofs/verify` *(public — no account needed)* · `GET /proofs/attributes` · `POST /proofs/attributes` · `DELETE /proofs/attributes/:id` · `POST /proofs/attributes/:id/prove` |
+| Scribe & vitals | `POST /scribe/consultations/:id/draft` · `POST /scribe/consultations/:id/sign` · `GET /scribe/vitals` · `POST /scribe/vitals` |
 
 Every response uses the same envelope:
 
@@ -355,9 +369,19 @@ Everything is indexed in [`docs/README.md`](docs/README.md):
 | 7 | React foundation | Complete |
 | 8–10 | Patient / doctor / admin dashboards | Complete |
 | 11 | Hardening, documentation, deployment | Complete |
+| 12 | Email · MFA · video · ABDM/FHIR · ZK disclosure · ambient scribe | Complete, untested |
+| 13 | Deployed to Render + Atlas + Pinata | Live |
 
-**All 11 modules delivered.** 144 automated tests: 32 unit, 74 API integration,
-38 smart contract.
+**All 11 modules delivered**, plus a later feature set: SMTP email, TOTP
+two-factor auth, Jitsi video consultations, ABDM/ABHA linking with a FHIR R4
+projection, zero-knowledge selective disclosure, and an ambient scribe.
+
+144 automated tests: 32 unit, 74 API integration, 38 smart contract.
+
+> That figure predates the later features. MFA, ABDM/FHIR, the ZK proofs, the
+> scribe and mail delivery carry no automated tests — they were verified by
+> hand and against the deployed site. Stated here rather than left for a reader
+> to infer from a passing test count.
 
 Detailed task breakdown: [`PROJECT_TODO.md`](PROJECT_TODO.md)
 

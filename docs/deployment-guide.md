@@ -246,6 +246,22 @@ dashboard if and when you want the feature:
   the public origin is never hardcoded and reset links point at the right host.
 - `TRUST_TLS=true`, correct here because Render terminates TLS.
 
+**Four things that broke on the first real deploy.** Recorded because each one
+succeeds locally and fails only on a build machine, and three of them fail
+*silently* — the build goes green and the fault appears somewhere else.
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Site live, but no way to sign in as admin | Registration only mints patients and doctors; the free plan has no shell to run the seeder from | `SEED_ADMIN_ON_BOOT=true`, seeding during startup |
+| `sh: 1: vite: not found`, 120 packages installed | `NODE_ENV=production` makes `npm ci` skip devDependencies, and vite is one | `npm ci --include=dev` for the frontend install |
+| Page loads, then "Unable to reach the server" while `curl` gets 200 | `frontend/.env` is gitignored, so `VITE_API_URL` was unset and the bundle baked in a `localhost` fallback at build time | relative `/api/v1` default, plus `VITE_API_URL` in the blueprint |
+| `MongooseServerSelectionError: ReplicaSetNoPrimary` | Atlas IP access list had the developer's own IP but not `0.0.0.0/0` | add `0.0.0.0/0`, wait for **Active** |
+
+The third is the nastiest: the value is fixed at build time, so nothing at
+runtime can correct it, and the site looks perfectly healthy from the server
+side. If the API answers `curl` but not the browser, check what host the
+deployed bundle actually points at before looking anywhere else.
+
 **Free-tier caveats**, worth knowing before an examiner sees them:
 
 - The instance sleeps after ~15 minutes idle; the next request takes 30–60
