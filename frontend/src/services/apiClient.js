@@ -18,8 +18,23 @@ import axios from "axios";
  */
 const TOKEN_KEY = "bts.token";
 
+/**
+ * Same-origin by default.
+ *
+ * The fallback used to be http://localhost:5000/api/v1, which is wrong
+ * everywhere except one developer's machine — and it fails silently, because
+ * the value is baked in at BUILD time. A hosted build with no VITE_API_URL
+ * produced a bundle that told every visitor's browser to call its own
+ * localhost, so the site loaded perfectly and then reported "Unable to reach
+ * the server" on the first request.
+ *
+ * A relative "/api/v1" is right for both real deployments: the single-server
+ * production mode serves the API and the app on one origin, and the Vite dev
+ * server proxies /api to the backend. Neither needs a host baked in, and a
+ * missing env var now degrades to the correct behaviour instead of a broken one.
+ */
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1",
+  baseURL: import.meta.env.VITE_API_URL || "/api/v1",
   withCredentials: true,
   timeout: 30000,
 });

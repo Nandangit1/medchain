@@ -47,6 +47,15 @@ services:
       - key: SERVE_FRONTEND
         value: "true"
 
+      # Read by vite at BUILD time and baked into the bundle, so it has to be
+      # set here rather than discovered at runtime. frontend/.env carries this
+      # locally but is gitignored, so it does not exist on a build machine --
+      # without this the bundle falls back to a hardcoded host and every
+      # visitor's browser calls its own localhost instead of the server.
+      # Relative because one origin serves both the app and the API.
+      - key: VITE_API_URL
+        value: /api/v1
+
       # Render terminates TLS, so the secure cookie flag is correct here.
       - key: TRUST_TLS
         value: "true"
