@@ -10,6 +10,7 @@ const { NOTIFICATION_TYPES } = require("../constants/notifications");
 const accessControlService = require("./accessControlService");
 const auditService = require("./auditService");
 const blockchainService = require("./blockchainService");
+const chainSyncService = require("./chainSyncService");
 const encryptionService = require("./encryptionService");
 const notificationService = require("./notificationService");
 const telegramService = require("./telegramService");
@@ -237,6 +238,12 @@ const createRecord = async ({ actor, patient, file, payload }) => {
      * simply stays "pending" and `scripts/backfillAnchors.js` re-drives it
      * later — an upload is never lost to a blockchain problem.
      */
+    if (chainSyncService.isBackground()) {
+      // Public chain: answer now, anchor moments later (see chainSyncService).
+      chainSyncService.scheduleAnchor(record._id);
+      return record;
+    }
+
     const anchor = await blockchainService.anchorRecord({ patient, record });
 
     if (anchor.status !== BLOCKCHAIN_SYNC_STATUS.PENDING) {

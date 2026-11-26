@@ -1,3 +1,4 @@
+const { BLOCKCHAIN_SYNC_STATUS } = require("../constants/records");
 const { AUDIT_ACTIONS } = require("../constants/audit");
 const { DOCTOR_VERIFICATION_STATUS, ROLES } = require("../constants/roles");
 const { NOTIFICATION_TYPES } = require("../constants/notifications");
@@ -8,6 +9,7 @@ const AppError = require("../utils/AppError");
 const { buildPagination, buildPaginationMeta } = require("../utils/pagination");
 const auditService = require("./auditService");
 const blockchainService = require("./blockchainService");
+const chainSyncService = require("./chainSyncService");
 const notificationService = require("./notificationService");
 
 /**
@@ -114,10 +116,18 @@ const grantAccess = async ({ actor, recordId, doctorId, expiresAt, note, req }) 
     });
   }
 
-  const grantTx = await blockchainService.grantAccessOnChain({ record, doctor });
+  let grantTx;
 
-  permission.grantTx = grantTx;
-  await permission.save();
+  if (chainSyncService.isBackground()) {
+    grantTx = { status: BLOCKCHAIN_SYNC_STATUS.PENDING };
+    permission.grantTx = grantTx;
+    await permission.save();
+    chainSyncService.scheduleGrant(permission._id);
+  } else {
+    grantTx = await blockchainService.grantAccessOnChain({ record, doctor });
+    permission.grantTx = grantTx;
+    await permission.save();
+  }
 
   await auditService.record({
     action: AUDIT_ACTIONS.ACCESS_GRANTED,
@@ -153,10 +163,18 @@ const revokeAccess = async ({ actor, recordId, doctorId, req }) => {
   const doctor = await userRepository.findActiveById(doctorId);
   const revoked = await accessPermissionRepository.revoke(permission._id, actor._id);
 
-  const revokeTx = await blockchainService.revokeAccessOnChain({ record, doctor });
+  let revokeTx;
 
-  revoked.revokeTx = revokeTx;
-  await revoked.save();
+  if (chainSyncService.isBackground()) {
+    revokeTx = { status: BLOCKCHAIN_SYNC_STATUS.PENDING };
+    revoked.revokeTx = revokeTx;
+    await revoked.save();
+    chainSyncService.scheduleRevoke(revoked._id);
+  } else {
+    revokeTx = await blockchainService.revokeAccessOnChain({ record, doctor });
+    revoked.revokeTx = revokeTx;
+    await revoked.save();
+  }
 
   await auditService.record({
     action: AUDIT_ACTIONS.ACCESS_REVOKED,
@@ -270,6 +288,13 @@ const grantSystemAccess = async ({ record, patient, doctor }) => {
     custodial: true,
     note: "Automatic grant: this document was uploaded by the doctor.",
   });
+
+  if (chainSyncService.isBackground()) {
+    permission.grantTx = { status: BLOCKCHAIN_SYNC_STATUS.PENDING };
+    await permission.save();
+    chainSyncService.scheduleGrant(permission._id);
+    return permission;
+  }
 
   const grantTx = await blockchainService.grantAccessOnChain({ record, doctor });
   permission.grantTx = grantTx;

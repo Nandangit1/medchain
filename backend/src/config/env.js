@@ -221,6 +221,23 @@ const env = {
   BLOCKCHAIN_RPC_URL: process.env.BLOCKCHAIN_RPC_URL || "http://127.0.0.1:8545",
   BLOCKCHAIN_CHAIN_ID: Number(process.env.BLOCKCHAIN_CHAIN_ID || 31337),
   BLOCKCHAIN_CONFIRMATIONS: Number(process.env.BLOCKCHAIN_CONFIRMATIONS || 1),
+  /**
+   * Whether chain writes happen after the HTTP response instead of before it.
+   *
+   * On Hardhat Network a block is mined instantly, so waiting is free and the
+   * response can carry the confirmed anchor. On a public chain a block takes
+   * ~12 s and BLOCKCHAIN_CONFIRMATIONS of them are awaited, so an upload or a
+   * share would hang for 30-60 s and risk the platform's request timeout.
+   * Background mode answers at once with status "pending"; chainSyncService
+   * confirms it moments later and re-drives anything that did not land.
+   *
+   * Defaults to background on every chain except the local one (31337).
+   */
+  BLOCKCHAIN_BACKGROUND:
+    String(
+      process.env.BLOCKCHAIN_BACKGROUND ??
+        (Number(process.env.BLOCKCHAIN_CHAIN_ID || 31337) === 31337 ? "false" : "true")
+    ).toLowerCase() === "true",
   CONTRACT_ADDRESS: process.env.CONTRACT_ADDRESS,
   REGISTRAR_PRIVATE_KEY: process.env.REGISTRAR_PRIVATE_KEY,
   CUSTODIAL_WALLET_SEED: process.env.CUSTODIAL_WALLET_SEED,

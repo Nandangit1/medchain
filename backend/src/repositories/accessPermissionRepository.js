@@ -1,3 +1,4 @@
+const { BLOCKCHAIN_SYNC_STATUS } = require("../constants/records");
 const AccessPermission = require("../models/AccessPermission");
 
 /** Matches grants that have not been revoked and have not lapsed. */
@@ -66,7 +67,37 @@ const revoke = (id, revokedBy) =>
 const updateById = (id, updates) =>
   AccessPermission.findByIdAndUpdate(id, updates, { new: true }).exec();
 
+/** Live grants whose on-chain mirror has not landed yet. */
+const findUnsyncedGrants = (limit, maxAttempts) =>
+  AccessPermission.find({
+    revokedAt: null,
+    "grantTx.status": { $ne: BLOCKCHAIN_SYNC_STATUS.CONFIRMED },
+    $or: [{ "grantTx.attempts": { $exists: false } }, { "grantTx.attempts": { $lt: maxAttempts } }],
+  })
+    .sort({ createdAt: 1 })
+    .limit(limit)
+    .exec();
+
+/** Revocations whose on-chain mirror has not landed yet. */
+const findUnsyncedRevokes = (limit, maxAttempts) =>
+  AccessPermission.find({
+    revokedAt: { $ne: null },
+    "grantTx.status": BLOCKCHAIN_SYNC_STATUS.CONFIRMED,
+    "revokeTx.status": { $ne: BLOCKCHAIN_SYNC_STATUS.CONFIRMED },
+    $or: [{ "revokeTx.attempts": { $exists: false } }, { "revokeTx.attempts": { $lt: maxAttempts } }],
+  })
+    .sort({ revokedAt: 1 })
+    .limit(limit)
+    .exec();
+
+/** Live grants on one record, so they can follow as soon as it is anchored. */
+const findLiveByRecord = (recordId) =>
+  AccessPermission.find({ record: recordId, revokedAt: null }).exec();
+
 module.exports = {
+  findLiveByRecord,
+  findUnsyncedGrants,
+  findUnsyncedRevokes,
   create,
   findActiveRow,
   findById,

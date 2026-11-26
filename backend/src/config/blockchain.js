@@ -16,15 +16,25 @@ const ARTIFACT_PATH = path.join(__dirname, "contracts", "TelemedicineRecords.jso
 
 let cached = null;
 
+/**
+ * Committed ABI-only copy. The deployment file above is git-ignored (it holds
+ * a machine-specific address), so a hosted build never has it -- without this
+ * fallback a server with BLOCKCHAIN_ENABLED=true could not talk to the
+ * contract at all. The address always comes from CONTRACT_ADDRESS anyway.
+ */
+const COMMITTED_ABI_PATH = path.join(__dirname, "TelemedicineRecords.abi.json");
+
 const loadArtifact = () => {
-  if (!fs.existsSync(ARTIFACT_PATH)) {
+  const source = [ARTIFACT_PATH, COMMITTED_ABI_PATH].find((candidate) => fs.existsSync(candidate));
+
+  if (!source) {
     throw new Error(
-      `Contract artifact not found at ${ARTIFACT_PATH}. ` +
+      `Contract ABI not found at ${ARTIFACT_PATH} or ${COMMITTED_ABI_PATH}. ` +
         "Deploy the contract first: cd blockchain && npx hardhat run scripts/deploy.js --network localhost"
     );
   }
 
-  const artifact = JSON.parse(fs.readFileSync(ARTIFACT_PATH, "utf8"));
+  const artifact = JSON.parse(fs.readFileSync(source, "utf8"));
 
   if (!Array.isArray(artifact.abi) || artifact.abi.length === 0) {
     throw new Error("Contract artifact is missing its ABI. Re-run the deployment script.");

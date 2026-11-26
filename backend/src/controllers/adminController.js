@@ -1,3 +1,4 @@
+const { env } = require("../config/env");
 const { DOCTOR_VERIFICATION_STATUS, ROLES } = require("../constants/roles");
 const userRepository = require("../repositories/userRepository");
 const adminService = require("../services/adminService");
@@ -140,7 +141,11 @@ exports.verifyDoctor = catchAsync(async (req, res, next) => {
    */
   let onChain = null;
 
-  if (blockchainService.isEnabled()) {
+  if (blockchainService.isEnabled() && env.BLOCKCHAIN_BACKGROUND) {
+    // Public chain: don't hold the admin's request open for block confirmations.
+    blockchainService.verifyDoctorOnChain(doctor, req.user._id).catch(() => null);
+    onChain = { status: "pending" };
+  } else if (blockchainService.isEnabled()) {
     onChain = await blockchainService
       .verifyDoctorOnChain(doctor, req.user._id)
       .catch((error) => ({ error: error.message }));

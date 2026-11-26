@@ -1,3 +1,4 @@
+const { BLOCKCHAIN_SYNC_STATUS } = require("../constants/records");
 const MedicalRecord = require("../models/MedicalRecord");
 
 /**
@@ -59,7 +60,23 @@ const countByPatient = (patientId) => MedicalRecord.countDocuments(notDeleted({ 
 const existsByPatientAndHash = (patientId, fileHash) =>
   MedicalRecord.exists(notDeleted({ patient: patientId, "integrity.fileHash": fileHash }));
 
+/**
+ * Records not yet confirmed on-chain, oldest first, skipping those that have
+ * already failed `maxAttempts` times. Used by the chain sync worker.
+ */
+const findUnanchored = (limit, maxAttempts) =>
+  MedicalRecord.find(
+    notDeleted({
+      "blockchain.status": { $ne: BLOCKCHAIN_SYNC_STATUS.CONFIRMED },
+      $or: [{ "blockchain.attempts": { $exists: false } }, { "blockchain.attempts": { $lt: maxAttempts } }],
+    })
+  )
+    .sort({ createdAt: 1 })
+    .limit(limit)
+    .exec();
+
 module.exports = {
+  findUnanchored,
   countByPatient,
   create,
   existsByPatientAndHash,

@@ -6,6 +6,7 @@ const { connectDatabase } = require("./config/database");
 const { env } = require("./config/env");
 const { seedAdminOnBoot } = require("./services/seedService");
 const telegramService = require("./services/telegramService");
+const chainSyncService = require("./services/chainSyncService");
 
 let server;
 
@@ -61,6 +62,9 @@ const startServer = async () => {
   // After listen, so a webhook registered here can be answered immediately.
   // Never fatal: a bad token logs an error and the site runs without Telegram.
   telegramService.start();
+
+  // Re-drives anything not yet on-chain, then keeps doing so periodically.
+  chainSyncService.start();
 };
 
 process.on("uncaughtException", (error) => {
@@ -85,6 +89,7 @@ process.on("unhandledRejection", (error) => {
   process.on(signal, () => {
     console.log(`\n${signal} received. Closing server.`);
     telegramService.stop();
+    chainSyncService.stop();
 
     if (server) {
       server.close(() => process.exit(0));
