@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Button } from "react-bootstrap";
 import { toast } from "react-toastify";
-import { FiLock, FiSave } from "react-icons/fi";
+import { FiLock, FiMail, FiMapPin, FiSave } from "react-icons/fi";
 
 import { PageHeader, StatusChip, formatDate } from "../components/common";
 import PasswordInput from "../components/PasswordInput";
+import TelegramCard from "../components/TelegramCard";
 import useAuth from "../hooks/useAuth";
 import { authApi } from "../services";
 
@@ -17,6 +18,18 @@ const Profile = () => {
     gender: user?.gender ?? "",
     dateOfBirth: user?.dateOfBirth ? user.dateOfBirth.slice(0, 10) : "",
   });
+
+  const [address, setAddress] = useState({
+    line1: user?.address?.line1 ?? "",
+    line2: user?.address?.line2 ?? "",
+    city: user?.address?.city ?? "",
+    state: user?.address?.state ?? "",
+    postalCode: user?.address?.postalCode ?? "",
+    country: user?.address?.country ?? "India",
+  });
+
+  const [emailChange, setEmailChange] = useState({ newEmail: "", currentPassword: "" });
+  const [savingEmail, setSavingEmail] = useState(false);
 
   const [passwords, setPasswords] = useState({
     currentPassword: "",
@@ -37,6 +50,10 @@ const Profile = () => {
       if (profile.phone) payload.phone = profile.phone;
       if (profile.gender) payload.gender = profile.gender;
       if (profile.dateOfBirth) payload.dateOfBirth = new Date(profile.dateOfBirth).toISOString();
+      // Sent whole: the nearby medical stores page searches around this address.
+      payload.address = Object.fromEntries(
+        Object.entries(address).map(([key, value]) => [key, value.trim()])
+      );
 
       const data = await authApi.updateMe(payload);
       setUser(data.user);
@@ -45,6 +62,22 @@ const Profile = () => {
       toast.error(error.message);
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const saveEmail = async (event) => {
+    event.preventDefault();
+    setSavingEmail(true);
+
+    try {
+      const data = await authApi.changeEmail(emailChange);
+      setUser(data.user);
+      setEmailChange({ newEmail: "", currentPassword: "" });
+      toast.success("Email updated. Password reset codes will go to the new address.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setSavingEmail(false);
     }
   };
 
@@ -93,7 +126,7 @@ const Profile = () => {
             <div className="mb-3">
               <label className="form-label small fw-semibold">Email</label>
               <input className="form-control" value={user?.email ?? ""} disabled />
-              <div className="form-text">Email cannot be changed.</div>
+              <div className="form-text">Change it in the Sign-in email section below.</div>
             </div>
 
             <div className="row g-2 mb-4">
@@ -132,9 +165,115 @@ const Profile = () => {
               </div>
             </div>
 
+            <h6 className="fw-bold mb-1 d-flex align-items-center gap-2">
+              <FiMapPin /> Address
+            </h6>
+            <p className="small text-muted mb-3">
+              Used to find medical stores near you. Only you can see it.
+            </p>
+
+            <div className="mb-2">
+              <input
+                maxLength={120}
+                className="form-control"
+                placeholder="House / street"
+                value={address.line1}
+                onChange={(event) => setAddress({ ...address, line1: event.target.value })}
+              />
+            </div>
+            <div className="mb-2">
+              <input
+                maxLength={120}
+                className="form-control"
+                placeholder="Area / landmark (optional)"
+                value={address.line2}
+                onChange={(event) => setAddress({ ...address, line2: event.target.value })}
+              />
+            </div>
+            <div className="row g-2 mb-4">
+              <div className="col-sm-4">
+                <input
+                  maxLength={80}
+                  className="form-control"
+                  placeholder="City"
+                  value={address.city}
+                  onChange={(event) => setAddress({ ...address, city: event.target.value })}
+                />
+              </div>
+              <div className="col-sm-3">
+                <input
+                  maxLength={80}
+                  className="form-control"
+                  placeholder="State"
+                  value={address.state}
+                  onChange={(event) => setAddress({ ...address, state: event.target.value })}
+                />
+              </div>
+              <div className="col-sm-2">
+                <input
+                  maxLength={20}
+                  className="form-control"
+                  placeholder="PIN"
+                  value={address.postalCode}
+                  onChange={(event) => setAddress({ ...address, postalCode: event.target.value })}
+                />
+              </div>
+              <div className="col-sm-3">
+                <input
+                  maxLength={80}
+                  className="form-control"
+                  placeholder="Country"
+                  value={address.country}
+                  onChange={(event) => setAddress({ ...address, country: event.target.value })}
+                />
+              </div>
+            </div>
+
             <Button type="submit" size="sm" disabled={savingProfile}>
               <FiSave className="me-1" />
               {savingProfile ? "Saving..." : "Save changes"}
+            </Button>
+          </form>
+
+          <form onSubmit={saveEmail} className="bts-card p-4 mb-3">
+            <h6 className="fw-bold mb-1 d-flex align-items-center gap-2">
+              <FiMail /> Sign-in email
+            </h6>
+            <p className="small text-muted mb-3">
+              Password reset codes are sent here. Use an inbox you check, such as your Gmail.
+            </p>
+
+            <div className="row g-2 mb-3">
+              <div className="col-sm-6">
+                <label className="form-label small fw-semibold">New email</label>
+                <input
+                  type="email"
+                  required
+                  maxLength={120}
+                  autoComplete="email"
+                  className="form-control"
+                  placeholder="you@gmail.com"
+                  value={emailChange.newEmail}
+                  onChange={(event) => setEmailChange({ ...emailChange, newEmail: event.target.value })}
+                />
+              </div>
+              <div className="col-sm-6">
+                <PasswordInput
+                  id="emailCurrentPassword"
+                  label="Current password"
+                  required
+                  autoComplete="current-password"
+                  value={emailChange.currentPassword}
+                  onChange={(event) =>
+                    setEmailChange({ ...emailChange, currentPassword: event.target.value })
+                  }
+                />
+              </div>
+            </div>
+
+            <Button type="submit" size="sm" variant="outline-primary" disabled={savingEmail}>
+              <FiMail className="me-1" />
+              {savingEmail ? "Updating..." : "Change email"}
             </Button>
           </form>
 
@@ -201,6 +340,8 @@ const Profile = () => {
         </div>
 
         <div className="col-lg-5">
+          <TelegramCard role={user?.role} />
+
           <div className="bts-card p-4">
             <h6 className="fw-bold mb-3">Account</h6>
 

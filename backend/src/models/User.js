@@ -134,6 +134,21 @@ const userSchema = new mongoose.Schema(
       verified: { type: Boolean, default: false },
       linkedAt: Date,
     },
+    /**
+     * Telegram delivery of doctor reports and guidance.
+     *
+     * `chatId` is where the bot posts; it is hidden by default so a stray
+     * query cannot hand out a way to message someone. `linkCodeHash` is the
+     * SHA-256 of the one-time code carried in the t.me deep link -- the raw
+     * code is never stored, the same rule as reset tokens.
+     */
+    telegram: {
+      chatId: { type: String, select: false },
+      username: { type: String, trim: true, maxlength: 64 },
+      linkedAt: Date,
+      linkCodeHash: { type: String, select: false },
+      linkCodeExpiresAt: { type: Date, select: false },
+    },
     isActive: {
       type: Boolean,
       default: true,
@@ -169,6 +184,7 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ role: 1 });
 userSchema.index({ walletAddress: 1 }, { unique: true, sparse: true });
 userSchema.index({ "doctorProfile.verificationStatus": 1 });
+userSchema.index({ "telegram.linkCodeHash": 1 }, { sparse: true });
 /**
  * One licence number per doctor.
  *
@@ -234,6 +250,12 @@ const stripSecrets = (user) => {
     delete user.mfa.secret;
     delete user.mfa.pendingSecret;
     delete user.mfa.backupCodes;
+  }
+
+  if (user.telegram) {
+    delete user.telegram.chatId;
+    delete user.telegram.linkCodeHash;
+    delete user.telegram.linkCodeExpiresAt;
   }
 
   return user;

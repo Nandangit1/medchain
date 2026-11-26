@@ -77,6 +77,12 @@ const corsOrigins = (process.env.CORS_ORIGIN || "http://localhost:3000,http://lo
   .map((origin) => origin.trim().replace(/\/$/, ""))
   .filter(Boolean);
 
+const mailProvider = (process.env.MAIL_PROVIDER || "smtp").toLowerCase();
+
+if (!["smtp", "brevo"].includes(mailProvider)) {
+  throw new Error(`MAIL_PROVIDER must be "smtp" or "brevo". Received "${mailProvider}".`);
+}
+
 const env = {
   NODE_ENV: process.env.NODE_ENV || "development",
   PORT: Number(process.env.PORT || 5000),
@@ -132,6 +138,33 @@ const env = {
   SMTP_USER: process.env.SMTP_USER,
   SMTP_PASSWORD: process.env.SMTP_PASSWORD,
   MAIL_FROM: process.env.MAIL_FROM || "MedChain <no-reply@medchain.local>",
+  /**
+   * How mail leaves the server.
+   *
+   *   smtp   nodemailer over SMTP (Gmail with an App Password, Brevo relay...).
+   *          Right for local runs and paid hosting.
+   *   brevo  Brevo's HTTPS API on port 443. Required on Render's free tier,
+   *          which blocks outbound SMTP ports 25, 465 and 587 outright -- an
+   *          SMTP transport there times out on every message.
+   */
+  MAIL_PROVIDER: (process.env.MAIL_PROVIDER || "smtp").toLowerCase(),
+  BREVO_API_KEY: process.env.BREVO_API_KEY,
+  /**
+   * Telegram delivery of doctor reports and guidance. Off unless a bot token
+   * is present. TELEGRAM_MODE picks how the bot receives /start messages:
+   * "webhook" needs a public https APP_URL (production); "polling" works from
+   * a laptop behind NAT. Left empty, it is chosen from APP_URL.
+   */
+  TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+  TELEGRAM_MODE: (process.env.TELEGRAM_MODE || "").toLowerCase(),
+  /**
+   * Google Maps for the nearby medical stores page. One browser key with the
+   * Maps JavaScript, Places (New) and Geocoding APIs enabled, restricted by
+   * HTTP referrer to the site's own origin. It is handed to the browser at
+   * runtime, so changing it needs no rebuild.
+   */
+  GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY,
+  GOOGLE_MAPS_MAP_ID: process.env.GOOGLE_MAPS_MAP_ID || "DEMO_MAP_ID",
   /**
    * Roles prompted to set up a second factor. Enforcement is separate and off
    * by default: switching MFA on must not lock an existing deployment out of

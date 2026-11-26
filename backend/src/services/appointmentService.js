@@ -1,12 +1,15 @@
 const crypto = require("crypto");
 
 const { env } = require("../config/env");
+const { NOTIFICATION_TYPES } = require("../constants/notifications");
 const { DOCTOR_VERIFICATION_STATUS, ROLES } = require("../constants/roles");
 const { APPOINTMENT_MODES, APPOINTMENT_STATUS } = require("../models/Appointment");
 const appointmentRepository = require("../repositories/appointmentRepository");
 const userRepository = require("../repositories/userRepository");
 const AppError = require("../utils/AppError");
 const { buildPagination, buildPaginationMeta } = require("../utils/pagination");
+const notificationService = require("./notificationService");
+const telegramService = require("./telegramService");
 
 /**
  * Appointment Service — Module 6b.
@@ -174,6 +177,22 @@ const completeAppointment = async ({ actor, appointmentId, doctorNotes }) => {
     completedAt: new Date(),
     doctorNotes,
   });
+
+  // The visit notes are the doctor's guidance; send them where the patient reads.
+  if (doctorNotes && doctorNotes.trim()) {
+    await notificationService.push({
+      user: appointment.patient?._id ?? appointment.patient,
+      type: NOTIFICATION_TYPES.APPOINTMENT_COMPLETED,
+      title: "Your consultation notes are ready",
+      message: `${actor.name} completed your appointment and left guidance.`,
+      link: "/patient/appointments",
+      telegram: telegramService.formatVisitNotes({
+        appointment,
+        doctorName: actor.name,
+        notes: doctorNotes,
+      }),
+    });
+  }
 
   return updated.toClientObject();
 };

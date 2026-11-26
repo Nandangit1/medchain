@@ -1,3 +1,4 @@
+const { NOTIFICATION_TYPES } = require("../constants/notifications");
 const { RECORD_TYPES } = require("../constants/records");
 const { DOCTOR_VERIFICATION_STATUS, ROLES } = require("../constants/roles");
 const accessPermissionRepository = require("../repositories/accessPermissionRepository");
@@ -8,6 +9,8 @@ const AppError = require("../utils/AppError");
 const { buildPagination, buildPaginationMeta } = require("../utils/pagination");
 const accessControlService = require("./accessControlService");
 const medicalRecordService = require("./medicalRecordService");
+const notificationService = require("./notificationService");
+const telegramService = require("./telegramService");
 
 /**
  * Doctor Service — Module 6.
@@ -91,6 +94,22 @@ const createDiagnosis = async ({ actor, recordId, payload }) => {
     icdCode: payload.icdCode,
     severity: payload.severity,
     followUpAt: payload.followUpAt,
+  });
+
+  /**
+   * The patient hears about their own diagnosis -- in the app, by email, and
+   * in full on Telegram when they have linked a chat, which is where the
+   * doctor's written guidance is most useful away from a desk.
+   */
+  const patientId = record.patient?._id ?? record.patient;
+  await notificationService.push({
+    user: patientId,
+    type: NOTIFICATION_TYPES.DIAGNOSIS_ADDED,
+    title: "Your doctor added a diagnosis",
+    message: `${actor.name} added a diagnosis to "${record.title}": ${diagnosis.summary}`,
+    link: `/patient/records/${record._id}`,
+    email: true,
+    telegram: telegramService.formatDiagnosis({ diagnosis, doctorName: actor.name }),
   });
 
   return diagnosis.toClientObject();

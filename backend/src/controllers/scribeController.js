@@ -6,6 +6,7 @@ const appointmentRepository = require("../repositories/appointmentRepository");
 const auditService = require("../services/auditService");
 const notificationService = require("../services/notificationService");
 const scribeService = require("../services/scribeService");
+const telegramService = require("../services/telegramService");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 const { sendSuccess } = require("../utils/sendResponse");
@@ -98,6 +99,11 @@ exports.signNote = catchAsync(async (req, res) => {
     message: `${req.user.name} signed the note from your consultation.`,
     link: "/patient/records",
     email: true,
+    telegram: telegramService.formatDiagnosis({
+      diagnosis,
+      doctorName: req.user.name,
+      heading: "📝 Your consultation note is ready",
+    }),
   });
 
   sendSuccess(res, 201, "Consultation note signed.", { diagnosis });

@@ -89,14 +89,21 @@ exports.forgotPasswordRules = [
 ];
 
 exports.resetPasswordRules = [
-  body("token")
+  body("email").trim().isEmail().withMessage("Please provide a valid email address.").normalizeEmail(),
+  body("otp")
     .isString()
-    .isLength({ min: 32, max: 128 })
-    .withMessage("A valid reset token is required."),
+    .trim()
+    .matches(/^\d{6}$/)
+    .withMessage("Enter the 6-digit code from your email."),
   passwordRule("newPassword"),
   body("newPasswordConfirm")
     .custom((value, { req }) => value === req.body.newPassword)
     .withMessage("Password confirmation does not match."),
+];
+
+exports.changeEmailRules = [
+  body("newEmail").trim().isEmail().withMessage("Please provide a valid email address.").normalizeEmail(),
+  body("currentPassword").notEmpty().withMessage("Current password is required."),
 ];
 
 exports.changePasswordRules = [

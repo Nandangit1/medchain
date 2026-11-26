@@ -273,6 +273,80 @@ deployed bundle actually points at before looking anywhere else.
 
 ---
 
+## 4c. Email codes, Telegram and Maps
+
+Three features need an account of yours. Each is off until its variable is set,
+and the site runs normally without it. Add every value under the Render
+service's **Environment** tab, then **Save, rebuild and deploy**.
+
+### Password reset email (Brevo)
+
+Password reset emails a 6-digit code. Render's free tier blocks outbound SMTP
+on ports 25, 465 and 587, so Gmail SMTP times out there. Mail goes through
+Brevo's HTTPS API instead (free: 300 emails a day).
+
+1. Sign up at brevo.com.
+2. **Senders, domains & IPs → Senders → Add a sender**: add your Gmail address
+   and click the confirmation link Brevo emails you.
+3. **SMTP & API → API keys → Generate a new API key**.
+4. On Render set:
+   - `BREVO_API_KEY` = the key
+   - `MAIL_FROM` = `MedChain <your-verified@gmail.com>` (replace the old
+     `no-reply@medchain.local` value, which Brevo will refuse)
+
+   `MAIL_ENABLED=true` and `MAIL_PROVIDER=brevo` are already set by
+   `render.yaml`.
+5. Sign in as admin → **Profile → Sign-in email** and move the admin account
+   to your Gmail. Codes go to the account's email, so a seeded
+   `admin@example.com` would never receive one.
+
+Until the key is set, each code is written to the Render log
+(`Password reset code was not emailed`), so an admin is never locked out.
+Codes sent from a free Gmail address through Brevo can land in spam the first
+time. Mark the message "Not spam" once.
+
+Locally, Gmail SMTP works: `MAIL_PROVIDER=smtp`, `SMTP_HOST=smtp.gmail.com`,
+`SMTP_PORT=587`, `SMTP_USER=you@gmail.com`, and `SMTP_PASSWORD` set to a
+16-character **App Password** (Google Account → Security → 2-Step
+Verification → App passwords), not your normal password.
+
+### Telegram
+
+1. In Telegram, message **@BotFather** → `/newbot` → pick a name and a
+   username ending in `bot`. Copy the token it gives you.
+2. On Render set `TELEGRAM_BOT_TOKEN` = the token. On boot the server
+   registers its webhook at `APP_URL/api/v1/telegram/webhook`. The log shows
+   `Telegram webhook registered`.
+3. Each patient: **Profile → Telegram → Connect Telegram** → press **Start** in
+   the bot.
+
+Diagnoses, signed consultation notes, documents a doctor uploads, and visit
+notes from a completed appointment are then sent as messages. The bot also
+answers `/latest`, `/stop` and `/help`. Files are never sent: the message holds
+the summary and guidance plus a button to open the record behind the normal
+sign-in, because bot chats are not end-to-end encrypted.
+
+Locally the bot uses long polling, so no public URL is needed. Run only one
+server per bot token: two pollers make Telegram return 409 errors.
+
+### Google Maps (nearby medical stores)
+
+1. Go to console.cloud.google.com, create a project and **enable billing**
+   (Google gives a monthly free usage credit, but a card is required).
+2. **APIs & Services → Library**: enable **Maps JavaScript API**,
+   **Places API (New)** and **Geocoding API**.
+3. **Credentials → Create credentials → API key**. Under *Application
+   restrictions* choose **Websites** and add
+   `https://medchain-y4k0.onrender.com/*` (plus `http://localhost:3000/*`
+   for local use). Under *API restrictions*, limit it to the three APIs above.
+4. On Render set `GOOGLE_MAPS_API_KEY` = the key. Optional: create a Map ID
+   (Map Management) and set `GOOGLE_MAPS_MAP_ID`. Otherwise Google's
+   `DEMO_MAP_ID` is used.
+
+The key is handed to the browser at runtime, so no rebuild is needed when it
+changes. Without a key, the page shows Google Maps search links instead of the
+built-in map.
+
 ## 5. Backend
 
 ```bash

@@ -23,6 +23,8 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const patientRoutes = require("./routes/patientRoutes");
 const proofRoutes = require("./routes/proofRoutes");
 const scribeRoutes = require("./routes/scribeRoutes");
+const mapsRoutes = require("./routes/mapsRoutes");
+const telegramRoutes = require("./routes/telegramRoutes");
 const globalErrorHandler = require("./middlewares/errorMiddleware");
 
 const app = express();
@@ -64,6 +66,22 @@ const cspDirectives = {
   "script-src": ["'self'", jitsiOrigin],
   "frame-src": ["'self'", jitsiOrigin],
 };
+
+/**
+ * Google Maps, only when a key is configured -- an unused allowance is still
+ * attack surface. The origins are Google's published CSP list for the Maps
+ * JavaScript API: script and tiles from googleapis/gstatic, Places requests
+ * over connect-src, and blob: workers for the vector renderer.
+ */
+if (env.GOOGLE_MAPS_API_KEY) {
+  const google = ["https://*.googleapis.com", "https://*.gstatic.com", "*.google.com", "https://*.ggpht.com", "*.googleusercontent.com"];
+  cspDirectives["script-src"].push(...google, "blob:");
+  cspDirectives["img-src"].push(...google);
+  cspDirectives["connect-src"].push("https://*.googleapis.com", "*.google.com", "https://*.gstatic.com", "data:", "blob:");
+  cspDirectives["frame-src"].push("*.google.com");
+  cspDirectives["font-src"] = ["'self'", "https:", "data:"];
+  cspDirectives["worker-src"] = ["'self'", "blob:"];
+}
 
 if (!env.TRUST_TLS) {
   delete cspDirectives["upgrade-insecure-requests"];
@@ -152,6 +170,8 @@ app.use("/api/v1/appointments", appointmentRoutes);
 app.use("/api/v1/notifications", notificationRoutes);
 app.use("/api/v1/proofs", proofRoutes);
 app.use("/api/v1/scribe", scribeRoutes);
+app.use("/api/v1/telegram", telegramRoutes);
+app.use("/api/v1/maps", mapsRoutes);
 /**
  * Mounted at the API root rather than under a prefix: /me/export and /me are
  * DPDP data-principal rights, which belong to the person, not to a subsystem.
@@ -174,6 +194,8 @@ app.get("/api", (_req, res) => {
       appointments: "/api/v1/appointments",
       notifications: "/api/v1/notifications",
       proofs: "/api/v1/proofs",
+      telegram: "/api/v1/telegram",
+      maps: "/api/v1/maps",
       fhir: "/api/v1/fhir/me",
       privacyNotice: "/api/v1/privacy-notice",
     },

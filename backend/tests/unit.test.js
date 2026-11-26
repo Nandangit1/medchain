@@ -292,3 +292,46 @@ describe("Unit — sort allow-list", () => {
     assert.deepEqual(buildSort(null, allowed, { title: 1 }), { title: 1 });
   });
 });
+
+describe("Telegram message formatting", () => {
+  const telegramService = require("../src/services/telegramService");
+
+  it("escapes markup in doctor-written text", () => {
+    const html = telegramService.formatDiagnosis({
+      diagnosis: { summary: "<b>x</b> & <script>", details: "Take 1 < 2 tablets", severity: "high" },
+      doctorName: "Dr <i>Evil</i>",
+    });
+
+    assert.ok(!html.includes("<script>"), "raw tags from the diagnosis must not reach Telegram");
+    assert.ok(html.includes("&lt;script&gt;"));
+    assert.ok(html.includes("Dr &lt;i&gt;Evil&lt;/i&gt;"));
+    assert.ok(html.includes("1 &lt; 2"));
+  });
+
+  it("includes the guidance and follow-up when present", () => {
+    const html = telegramService.formatDiagnosis({
+      diagnosis: {
+        summary: "Seasonal allergic rhinitis",
+        details: "Steam inhalation twice daily.",
+        icdCode: "J30.2",
+        followUpAt: "2026-12-10T00:00:00Z",
+      },
+      doctorName: "Dr Rao",
+    });
+
+    assert.match(html, /Doctor's guidance/);
+    assert.match(html, /Steam inhalation/);
+    assert.match(html, /J30\.2/);
+    assert.match(html, /Follow-up/);
+  });
+
+  it("never claims to attach the file itself", () => {
+    const html = telegramService.formatDocument({
+      record: { title: "CBC report", recordType: "lab_report" },
+      doctorName: "Dr Rao",
+    });
+
+    assert.match(html, /lab report/);
+    assert.match(html, /stays encrypted/);
+  });
+});

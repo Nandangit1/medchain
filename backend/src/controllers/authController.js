@@ -310,6 +310,69 @@ exports.updateMe = catchAsync(async (req, res, next) => {
   });
 });
 
+/**
+ * Moves the account to a new address.
+ *
+ * Exists chiefly for the administrator: the seeded account starts with
+ * whatever ADMIN_EMAIL said on first boot, and password reset now goes by an
+ * emailed code -- so the account must point at an inbox its owner reads.
+ *
+ * The current password is required, so a borrowed unlocked session cannot
+ * redirect the reset codes to an attacker's mailbox. The old address is told.
+ */
+exports.changeEmail = catchAsync(async (req, res, next) => {
+  const user = await userRepository.findByIdWithCredentials(req.user._id);
+
+  if (!user || !user.isActive) {
+    return next(new AppError("User not found.", 404));
+  }
+
+  if (!(await user.comparePassword(req.body.currentPassword))) {
+    await auditService.record({
+      action: AUDIT_ACTIONS.USER_EMAIL_CHANGED,
+      actor: req.user,
+      outcome: AUDIT_OUTCOMES.FAILURE,
+      description: "Incorrect current password supplied",
+      req,
+    });
+
+    return next(new AppError("Current password is incorrect.", 401));
+  }
+
+  const newEmail = String(req.body.newEmail).toLowerCase();
+  const previousEmail = user.email;
+
+  if (newEmail === previousEmail) {
+    return next(new AppError("That is already your email address.", 400));
+  }
+
+  if (await userRepository.findByEmailWithStatus(newEmail)) {
+    return next(new AppError("Another account already uses that email address.", 409));
+  }
+
+  user.email = newEmail;
+  await userRepository.save(user);
+
+  await auditService.record({
+    action: AUDIT_ACTIONS.USER_EMAIL_CHANGED,
+    actor: user,
+    description: `Email changed from ${previousEmail} to ${newEmail}`,
+    req,
+  });
+
+  await mailService.send({
+    to: previousEmail,
+    subject: "Your MedChain email address was changed",
+    title: "Email address changed",
+    body: `<p>Hello ${user.name},</p>
+      <p>Your MedChain sign-in email was changed to <strong>${newEmail}</strong>.
+      Password reset codes will go there from now on.</p>
+      <p>If this was not you, contact your administrator immediately.</p>`,
+  });
+
+  return sendSuccess(res, 200, "Email address updated.", { user: user.toSafeObject() });
+});
+
 exports.changePassword = catchAsync(async (req, res, next) => {
   const user = await userRepository.findByIdWithCredentials(req.user._id);
 
@@ -347,76 +410,91 @@ exports.changePassword = catchAsync(async (req, res, next) => {
 });
 
 /**
- * Starts a password reset.
+ * Starts a password reset by emailing a 6-digit one-time code.
  *
  * ALWAYS returns the same success response, whether or not the address is
  * registered. Reporting "no such account" would turn this endpoint into a free
  * user-enumeration oracle.
  *
- * There is no mail transport configured, so the link is written to the
- * application log. In development it is also returned in the response to keep
- * the flow testable — never in production.
+ * A code rather than a link: it works when the mail is read on a phone and the
+ * site is open on a laptop, and it never depends on APP_URL being right.
+ *
+ * Outside production the code is also returned in the response, so the flow is
+ * testable with no mail transport. In production it exists only in the email
+ * (and, with MAIL_ENABLED=false, in the server log as a recovery path).
  */
+const GENERIC_RESET_MESSAGE =
+  "If an account exists for that address, a verification code has been sent to it.";
+
 exports.forgotPassword = catchAsync(async (req, res) => {
   const email = String(req.body.email).toLowerCase();
   const user = await userRepository.findByEmailWithStatus(email);
 
-  const genericResponse = () =>
-    sendSuccess(
-      res,
-      200,
-      "If an account exists for that address, a reset link has been sent.",
-      env.NODE_ENV === "production" ? null : { note: "Check the server logs for the reset link." }
-    );
+  const genericResponse = (extra = null) =>
+    sendSuccess(res, 200, GENERIC_RESET_MESSAGE, {
+      expiresInMinutes: tokenService.OTP_TTL_MINUTES,
+      ...(extra || {}),
+    });
 
   if (!user || !user.isActive) {
     logger.info("Password reset requested for an unknown or inactive address", { email });
     return genericResponse();
   }
 
-  const rawToken = await tokenService.issuePasswordResetToken(user, req);
-  // APP_URL, not CORS_ORIGIN: the latter is a list and would produce a
-  // malformed link the moment more than one origin is allow-listed.
-  const resetUrl = `${env.APP_URL}/reset-password?token=${rawToken}`;
+  const issued = await tokenService.issuePasswordResetOtp(user, req);
 
-  logger.info("Password reset link issued", { userId: String(user._id), resetUrl });
+  if (issued.throttled) {
+    // Same response as a fresh send: a caller must not learn that an account
+    // exists from the fact that it is being rate limited.
+    logger.info("Password reset code re-requested inside the cooldown", { userId: String(user._id) });
+    return genericResponse();
+  }
 
   await auditService.record({
     action: AUDIT_ACTIONS.USER_PASSWORD_RESET_REQUESTED,
     actor: user,
-    description: "Password reset requested",
+    description: "Password reset code requested",
     req,
   });
 
-  await mailService.send({
+  const mail = await mailService.send({
     to: user.email,
-    subject: "Reset your MedChain password",
-    title: "Reset your password",
+    subject: `${issued.code} is your MedChain verification code`,
+    title: "Your password reset code",
     body: `<p>Hello ${user.name},</p>
-      <p>We received a request to reset your MedChain password. This link is
-      valid for ${tokenService.RESET_TTL_MINUTES} minutes and can be used once.</p>
-      <p>If you did not request this, ignore this email — your password will
-      not change, and nobody can act on the request without this link.</p>`,
-    action: { label: "Choose a new password", url: resetUrl },
+      <p>Use this code to reset your MedChain password:</p>
+      <p style="font-size:32px;font-weight:700;letter-spacing:8px;color:#0f766e;
+                margin:20px 0;font-family:Consolas,'Courier New',monospace;">${issued.code}</p>
+      <p>It expires in ${tokenService.OTP_TTL_MINUTES} minutes and works once. After
+      ${tokenService.OTP_MAX_ATTEMPTS} wrong attempts it stops working and you will need a new one.</p>
+      <p>If you did not ask for this, ignore this email. Your password stays the same,
+      and nobody can change it without this code.</p>`,
   });
 
-  // Returned only outside production, where there may be no mail transport and
-  // the flow still has to be testable. In production the link exists solely in
-  // the email and the log, so the response cannot become an enumeration oracle.
-  if (env.NODE_ENV !== "production") {
-    return sendSuccess(res, 200, "If an account exists for that address, a reset link has been sent.", {
-      resetUrl,
-      expiresInMinutes: tokenService.RESET_TTL_MINUTES,
+  if (!mail.delivered) {
+    // The log is the recovery path when mail is off or failing; without it an
+    // admin locked out of a fresh deployment has no way back in.
+    logger.warn("Password reset code was not emailed", {
+      userId: String(user._id),
+      reason: mail.reason,
+      code: issued.code,
     });
   }
 
-  return genericResponse();
+  return genericResponse(env.NODE_ENV !== "production" ? { devOtp: issued.code } : null);
 });
 
+/** Second step: email + code + new password. Signs the user in on success. */
 exports.resetPassword = catchAsync(async (req, res) => {
-  const user = await tokenService.consumePasswordResetToken(req.body.token);
+  const email = String(req.body.email).toLowerCase();
+  const candidate = await userRepository.findByEmailWithStatus(email);
 
-  const account = await userRepository.findByIdWithCredentials(user._id);
+  await tokenService.consumePasswordResetOtp(
+    candidate && candidate.isActive ? candidate : null,
+    req.body.otp
+  );
+
+  const account = await userRepository.findByIdWithCredentials(candidate._id);
   account.password = req.body.newPassword;
   await userRepository.saveWithHooks(account);
 
@@ -426,9 +504,31 @@ exports.resetPassword = catchAsync(async (req, res) => {
   await auditService.record({
     action: AUDIT_ACTIONS.USER_PASSWORD_RESET_COMPLETED,
     actor: account,
-    description: "Password reset completed; all sessions revoked",
+    description: "Password reset by emailed code; all sessions revoked",
     req,
   });
+
+  await mailService.send({
+    to: account.email,
+    subject: "Your MedChain password was changed",
+    title: "Password changed",
+    body: `<p>Hello ${account.name},</p>
+      <p>The password for your MedChain account was just reset using a code sent to
+      this address. Every other device has been signed out.</p>
+      <p>If this was not you, reset it again immediately and tell your administrator.</p>`,
+  });
+
+  /**
+   * An emailed code proves control of the inbox, not possession of the second
+   * factor. Signing an MFA account straight in here would let a compromised
+   * mailbox bypass the authenticator entirely, so those accounts go back
+   * through the normal two-step sign-in.
+   */
+  if (account.mfa?.enabled) {
+    return sendSuccess(res, 200, "Password reset. Sign in with your new password and authenticator code.", {
+      signInRequired: true,
+    });
+  }
 
   return sendAuthResponse(res, req, 200, account, "Password reset successfully.");
 });

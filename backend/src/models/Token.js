@@ -4,6 +4,8 @@ const mongoose = require("mongoose");
 const TOKEN_TYPES = Object.freeze({
   REFRESH: "refresh",
   PASSWORD_RESET: "password_reset",
+  /** 6-digit code emailed for a password reset; see tokenService. */
+  PASSWORD_RESET_OTP: "password_reset_otp",
 });
 
 /**
@@ -41,6 +43,12 @@ const tokenSchema = new mongoose.Schema(
       required: true,
     },
     usedAt: { type: Date, default: null },
+    /**
+     * Wrong guesses against a one-time code. A 6-digit code has only a million
+     * values, so it is burned after a handful of misses rather than left open
+     * to enumeration for its whole lifetime.
+     */
+    attempts: { type: Number, default: 0 },
     revokedAt: { type: Date, default: null },
 
     /** Set when a refresh token is rotated, so reuse can be detected. */

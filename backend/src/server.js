@@ -5,6 +5,7 @@ const { canServeFrontend } = require("./app");
 const { connectDatabase } = require("./config/database");
 const { env } = require("./config/env");
 const { seedAdminOnBoot } = require("./services/seedService");
+const telegramService = require("./services/telegramService");
 
 let server;
 
@@ -56,6 +57,10 @@ const startServer = async () => {
 
   // 0.0.0.0 rather than the default, so LAN devices can reach it.
   server = app.listen(env.PORT, "0.0.0.0", banner);
+
+  // After listen, so a webhook registered here can be answered immediately.
+  // Never fatal: a bad token logs an error and the site runs without Telegram.
+  telegramService.start();
 };
 
 process.on("uncaughtException", (error) => {
@@ -79,6 +84,7 @@ process.on("unhandledRejection", (error) => {
 ["SIGTERM", "SIGINT"].forEach((signal) => {
   process.on(signal, () => {
     console.log(`\n${signal} received. Closing server.`);
+    telegramService.stop();
 
     if (server) {
       server.close(() => process.exit(0));

@@ -46,6 +46,22 @@ const findByEmailWithStatus = (email) =>
 const findByEmailWithCredentials = (email) =>
   User.findOne({ email: String(email).toLowerCase() }).select("+password +isActive").exec();
 
+/** Includes the Telegram chat id and pending link code. Telegram flows only. */
+const findByIdWithTelegram = (userId) =>
+  User.findById(userId)
+    .select("+isActive +telegram.chatId +telegram.linkCodeHash +telegram.linkCodeExpiresAt")
+    .exec();
+
+const findByTelegramLinkCode = (codeHash) =>
+  User.findOne({ "telegram.linkCodeHash": codeHash })
+    .select("+isActive +telegram.chatId +telegram.linkCodeHash +telegram.linkCodeExpiresAt")
+    .exec();
+
+const findByTelegramChatId = (chatId) =>
+  User.findOne({ "telegram.chatId": String(chatId) })
+    .select("+isActive +telegram.chatId")
+    .exec();
+
 const findActiveById = (userId) => User.findById(userId).select("+isActive").exec();
 
 const findActivePatientById = async (patientId) => {
@@ -130,6 +146,9 @@ module.exports = {
   findActivePatientById,
   findByEmailWithCredentials,
   findByEmailWithStatus,
+  findByIdWithTelegram,
+  findByTelegramChatId,
+  findByTelegramLinkCode,
   findById,
   findByIdWithCredentials,
   findByIdWithMfa,

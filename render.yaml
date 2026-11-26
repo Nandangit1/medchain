@@ -152,22 +152,34 @@ services:
           envVarKey: RENDER_EXTERNAL_URL
 
       # --- Email -----------------------------------------------------------
-      # Left off, which routes every message to the application log instead of
-      # a mailbox. Password reset still works: the link appears in the Render
-      # log stream. To use a real inbox, add SMTP_HOST, SMTP_USER and
-      # SMTP_PASSWORD in the dashboard and flip this to "true" -- with Gmail
-      # that means an app password, not the account one.
+      # Password reset sends a 6-digit code by email, so mail must really go
+      # out. Render's FREE tier blocks outbound SMTP (ports 25/465/587), so
+      # Gmail SMTP cannot work here -- mail goes through Brevo's HTTPS API.
       #
-      # Those three are deliberately NOT declared here. Every `sync: false` key
-      # becomes a field the Blueprint wizard asks for up front, and a first
-      # deploy should not have to answer questions about features it is not
-      # turning on. Adding them later in the dashboard works identically.
+      # Add these two in the dashboard (Environment), not here:
+      #   BREVO_API_KEY  Brevo -> SMTP & API -> API keys -> Generate
+      #   MAIL_FROM      e.g.  MedChain <yourname@gmail.com>
+      #                  That address must be verified in Brevo first
+      #                  (Senders, domains & IPs -> Senders -> Add a sender).
+      #
+      # Until BREVO_API_KEY exists, codes are written to the Render log
+      # instead, so an admin is never locked out of a fresh deploy.
       - key: MAIL_ENABLED
-        value: "false"
-      - key: SMTP_PORT
-        value: "587"
-      - key: MAIL_FROM
-        value: MedChain <no-reply@medchain.local>
+        value: "true"
+      - key: MAIL_PROVIDER
+        value: brevo
+
+      # --- Telegram --------------------------------------------------------
+      # Doctor diagnoses, uploaded reports and visit guidance are posted to a
+      # patient's linked Telegram chat. Create a bot with @BotFather, then add
+      # TELEGRAM_BOT_TOKEN in the dashboard. The webhook is registered on
+      # boot from APP_URL; nothing else to configure. Absent token = feature off.
+
+      # --- Google Maps -----------------------------------------------------
+      # Nearby medical stores page. Add GOOGLE_MAPS_API_KEY in the dashboard:
+      # a browser key with Maps JavaScript API, Places API (New) and Geocoding
+      # API enabled, restricted to https://<your-app>.onrender.com/*.
+      # Without it the page falls back to Google Maps search links.
 
       # --- Two-factor authentication ---------------------------------------
       # Prompting is on for clinicians and admins; ENFORCEMENT is deliberately

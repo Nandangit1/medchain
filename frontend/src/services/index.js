@@ -16,6 +16,7 @@ export const authApi = {
   me: () => apiClient.get("/auth/me").then(unwrap),
   updateMe: (payload) => apiClient.patch("/auth/me", payload).then(unwrap),
   changePassword: (payload) => apiClient.patch("/auth/change-password", payload).then(unwrap),
+  changeEmail: (payload) => apiClient.patch("/auth/email", payload).then(unwrap),
   forgotPassword: (email) => apiClient.post("/auth/forgot-password", { email }).then(unwrap),
   resetPassword: (payload) => apiClient.post("/auth/reset-password", payload).then(unwrap),
 
@@ -26,6 +27,21 @@ export const authApi = {
   mfaDisable: (payload) => apiClient.post("/auth/mfa/disable", payload).then(unwrap),
   /** Second leg of sign-in; unauthenticated, carries the challenge token. */
   mfaVerify: (payload) => apiClient.post("/auth/mfa/verify", payload).then(unwrap),
+};
+
+// --- Telegram ---------------------------------------------------------------
+
+export const telegramApi = {
+  status: () => apiClient.get("/telegram/status").then(unwrap),
+  link: () => apiClient.post("/telegram/link").then(unwrap),
+  unlink: () => apiClient.delete("/telegram/link").then(unwrap),
+  test: () => apiClient.post("/telegram/test").then(unwrap),
+};
+
+// --- Maps -------------------------------------------------------------------
+
+export const mapsApi = {
+  config: () => apiClient.get("/maps/config").then(unwrap),
 };
 
 // --- Notifications ----------------------------------------------------------

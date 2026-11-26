@@ -1,3 +1,5 @@
+const crypto = require("crypto");
+
 const logger = require("../config/logger");
 const { env } = require("../config/env");
 const Token = require("../models/Token");
@@ -5,7 +7,7 @@ const { TOKEN_TYPES } = require("../models/Token");
 const AppError = require("../utils/AppError");
 
 /**
- * Token Service — refresh tokens and password resets.
+ * Token Service — refresh tokens and emailed password-reset codes.
  *
  * DESIGN, and why it is this way:
  *
@@ -25,7 +27,6 @@ const AppError = require("../utils/AppError");
  *                  stolen refresh token.
  */
 const REFRESH_TTL_DAYS = 7;
-const RESET_TTL_MINUTES = 30;
 
 const issueRefreshToken = async (user, req) => {
   const { raw, hash } = Token.generate();
@@ -116,45 +117,93 @@ const revokeAllForUser = (userId) =>
     { revokedAt: new Date() }
   );
 
-// --- Password reset --------------------------------------------------------
+// --- Password reset by emailed one-time code --------------------------------
 
-const issuePasswordResetToken = async (user, req) => {
-  // One live reset at a time; requesting a new link invalidates the old one.
+const OTP_TTL_MINUTES = 10;
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_RESEND_COOLDOWN_SECONDS = 60;
+
+/**
+ * Keyed hash, not a bare SHA-256. A 6-digit code has a million values, so an
+ * unkeyed digest leaked from the database could be reversed in milliseconds.
+ * Binding the user id stops one digest from matching across accounts.
+ */
+const hashOtp = (userId, code) =>
+  crypto.createHmac("sha256", env.JWT_SECRET).update(`${userId}:${code}`).digest("hex");
+
+/**
+ * Issues a fresh code and invalidates any earlier one.
+ *
+ * @returns {Promise<{ code: string } | { throttled: true }>} `throttled` when a
+ *   code was sent within the cooldown, so the inbox is not flooded by someone
+ *   pressing "resend" -- or by someone else typing your address.
+ */
+const issuePasswordResetOtp = async (user, req) => {
+  const recent = await Token.findOne({
+    user: user._id,
+    type: TOKEN_TYPES.PASSWORD_RESET_OTP,
+    createdAt: { $gt: new Date(Date.now() - OTP_RESEND_COOLDOWN_SECONDS * 1000) },
+  }).exec();
+
+  if (recent) return { throttled: true };
+
   await Token.updateMany(
-    { user: user._id, type: TOKEN_TYPES.PASSWORD_RESET, usedAt: null, revokedAt: null },
+    { user: user._id, type: TOKEN_TYPES.PASSWORD_RESET_OTP, usedAt: null, revokedAt: null },
     { revokedAt: new Date() }
   );
 
-  const { raw, hash } = Token.generate();
+  // randomInt is uniform; Math.random is neither uniform enough nor unpredictable.
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
 
   await Token.create({
     user: user._id,
-    type: TOKEN_TYPES.PASSWORD_RESET,
-    tokenHash: hash,
-    expiresAt: new Date(Date.now() + RESET_TTL_MINUTES * 60 * 1000),
+    type: TOKEN_TYPES.PASSWORD_RESET_OTP,
+    tokenHash: hashOtp(user._id, code),
+    expiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000),
     ipAddress: req?.ip,
     userAgent: req?.headers?.["user-agent"]?.slice(0, 300),
   });
 
-  return raw;
+  return { code };
 };
 
-const consumePasswordResetToken = async (rawToken) => {
+/**
+ * Checks a code and burns it on success. Every failure returns the same
+ * message, so the response never reveals whether the address has an account,
+ * whether a code was ever issued, or how many guesses remain.
+ */
+const consumePasswordResetOtp = async (user, code) => {
+  const invalid = () => new AppError("That code is incorrect or has expired. Request a new one.", 400);
+
+  if (!user) throw invalid();
+
   const existing = await Token.findOne({
-    tokenHash: Token.hash(rawToken),
-    type: TOKEN_TYPES.PASSWORD_RESET,
+    user: user._id,
+    type: TOKEN_TYPES.PASSWORD_RESET_OTP,
+    usedAt: null,
+    revokedAt: null,
   })
-    .populate("user")
+    .sort({ createdAt: -1 })
     .exec();
 
-  if (!existing || !existing.isUsable() || !existing.user) {
-    throw new AppError("This reset link is invalid or has expired.", 400);
+  if (!existing || !existing.isUsable() || existing.attempts >= OTP_MAX_ATTEMPTS) {
+    throw invalid();
+  }
+
+  const expected = Buffer.from(existing.tokenHash, "hex");
+  const supplied = Buffer.from(hashOtp(user._id, String(code).trim()), "hex");
+
+  if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) {
+    existing.attempts += 1;
+    if (existing.attempts >= OTP_MAX_ATTEMPTS) existing.revokedAt = new Date();
+    await existing.save();
+    throw invalid();
   }
 
   existing.usedAt = new Date();
   await existing.save();
 
-  return existing.user;
+  return user;
 };
 
 /** Cookie options for the refresh token. */
@@ -173,10 +222,11 @@ const refreshCookieOptions = () => ({
 });
 
 module.exports = {
+  OTP_MAX_ATTEMPTS,
+  OTP_TTL_MINUTES,
   REFRESH_TTL_DAYS,
-  RESET_TTL_MINUTES,
-  consumePasswordResetToken,
-  issuePasswordResetToken,
+  consumePasswordResetOtp,
+  issuePasswordResetOtp,
   issueRefreshToken,
   refreshCookieOptions,
   revokeAllForUser,

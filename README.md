@@ -322,7 +322,10 @@ Base URL: `http://localhost:5000/api/v1`
 | Group | Endpoints |
 | --- | --- |
 | Health | `GET /health` |
-| Auth | `POST /auth/register` · `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` · `PATCH /auth/me` · `PATCH /auth/change-password` |
+| Auth | `POST /auth/register` · `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` · `PATCH /auth/me` · `PATCH /auth/change-password` · `PATCH /auth/email` |
+| Password reset | `POST /auth/forgot-password` *(emails a 6-digit code)* · `POST /auth/reset-password` *(email + code + new password)* |
+| Telegram | `GET /telegram/status` · `POST /telegram/link` · `DELETE /telegram/link` · `POST /telegram/test` · `POST /telegram/webhook` *(Telegram only, secret header)* |
+| Maps | `GET /maps/config` |
 | Admin | `GET /admin/users` · `GET /admin/users/:id` · `PATCH /admin/users/:id/status` · `GET /admin/doctors` · `PATCH /admin/doctors/:id/verify` · `PATCH /admin/doctors/:id/reject` |
 | Records | `POST /records` · `GET /records` · `GET /records/:id` · `GET /records/:id/download` · `GET /records/:id/verify` · `GET /records/:id/history` · `PATCH /records/:id` · `DELETE /records/:id` |
 | Sharing | `GET /records/:id/access` · `POST /records/:id/share` · `DELETE /records/:id/share/:doctorId` |
@@ -371,10 +374,17 @@ Everything is indexed in [`docs/README.md`](docs/README.md):
 | 11 | Hardening, documentation, deployment | Complete |
 | 12 | Email · MFA · video · ABDM/FHIR · ZK disclosure · ambient scribe | Complete, untested |
 | 13 | Deployed to Render + Atlas + Pinata | Live |
+| 14 | Emailed-code password reset · Telegram delivery of doctor reports · nearby medical stores map | Complete |
 
 **All 11 modules delivered**, plus a later feature set: SMTP email, TOTP
 two-factor auth, Jitsi video consultations, ABDM/ABHA linking with a FHIR R4
 projection, zero-knowledge selective disclosure, and an ambient scribe.
+
+Since then: password reset by a 6-digit code emailed to the account (Brevo
+HTTPS API in production, because Render's free tier blocks SMTP), Telegram
+delivery of diagnoses, doctor-uploaded reports and visit guidance, and a
+Google Maps page that separates Jan Aushadhi / generic medicine stores from
+other pharmacies around the patient's address.
 
 144 automated tests: 32 unit, 74 API integration, 38 smart contract.
 
@@ -390,9 +400,9 @@ Detailed task breakdown: [`PROJECT_TODO.md`](PROJECT_TODO.md)
 ## Testing
 
 ```bash
-cd backend     && npm run test:unit          # 32 — no services needed
-cd backend     && npm run test:integration   # 74 — needs API + DB running
-cd backend     && npm run test:all           # 106
+cd backend     && npm run test:unit          # 35 — no services needed
+cd backend     && npm run test:integration   # needs API + DB running
+cd backend     && npm run test:all           # 136
 cd blockchain  && npx hardhat test           # 38 — spins up its own chain
 cd backend     && npm run lint               # currently clean
 ```

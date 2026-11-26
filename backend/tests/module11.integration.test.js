@@ -6,7 +6,7 @@ const { before, describe, it } = require("node:test");
  * Module 11 — refresh tokens, password reset, notifications and audit log.
  *
  * The security-critical assertions are the negative ones: a rotated refresh
- * token cannot be replayed, a reset token cannot be reused, and one user
+ * token cannot be replayed, a reset code cannot be reused, and one user
  * cannot touch another's notifications.
  */
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:5000/api/v1";
@@ -142,78 +142,55 @@ describe("Module 11 — sessions, resets, notifications, audit", () => {
 
   // --- Password reset ------------------------------------------------------
 
-  describe("Password reset", () => {
-    it("returns the same response for unknown addresses", async () => {
-      const unknown = await api("/auth/forgot-password", {
+  describe("Password reset by emailed code", () => {
+    const requestCode = (email) =>
+      api("/auth/forgot-password", { method: "POST", body: { email } });
+
+    const resetWith = (email, otp, newPassword) =>
+      api("/auth/reset-password", {
         method: "POST",
-        body: { email: `nobody.${runId}@example.com` },
+        body: { email, otp, newPassword, newPasswordConfirm: newPassword },
       });
 
+    it("returns the same response for unknown addresses", async () => {
+      const unknown = await requestCode(`nobody.${runId}@example.com`);
+
       assert.equal(unknown.status, 200);
-      // No resetUrl for an address that does not exist — nothing to leak.
-      assert.equal(unknown.body.data?.resetUrl, undefined);
+      // No code for an address that does not exist — nothing to leak.
+      assert.equal(unknown.body.data?.devOtp, undefined);
       assert.match(unknown.body.message, /if an account exists/i);
     });
 
-    it("NEVER returns the reset link in production", async (t) => {
+    it("NEVER returns the code in production", async (t) => {
       if (!isProduction) {
         return t.skip("server is not in production mode");
       }
 
       const user = await register("m11.prodleak");
-
-      const requested = await api("/auth/forgot-password", {
-        method: "POST",
-        body: { email: user.email },
-      });
+      const requested = await requestCode(user.email);
 
       assert.equal(requested.status, 200);
       assert.equal(
-        requested.body.data?.resetUrl,
+        requested.body.data?.devOtp,
         undefined,
-        "the reset link must never be returned in a production response"
+        "the code must never be returned in a production response"
       );
     });
 
-    it("resets a password with a valid token and signs the user in", async (t) => {
+    it("resets a password with a valid code and signs the user in", async (t) => {
       if (isProduction) {
-        return t.skip("reset link is withheld in production; covered by the test above");
+        return t.skip("the code is withheld in production; covered by the test above");
       }
 
       const user = await register("m11.reset");
-
-      const requested = await api("/auth/forgot-password", {
-        method: "POST",
-        body: { email: user.email },
-      });
+      const requested = await requestCode(user.email);
       assert.equal(requested.status, 200);
 
-      const resetUrl = requested.body.data?.resetUrl;
-      assert.ok(resetUrl, "development mode should return the reset link");
+      const otp = requested.body.data?.devOtp;
+      assert.match(String(otp), /^\d{6}$/, "development mode should return a 6-digit code");
 
-      /**
-       * Regression guard. The link was once built from CORS_ORIGIN, which is a
-       * comma-separated allow-list — producing a malformed URL containing every
-       * origin at once, and emailing users a link that could not be opened.
-       * It must be a single well-formed origin.
-       */
-      assert.doesNotThrow(
-        () => new URL(resetUrl),
-        `reset link is not a valid URL: ${resetUrl}`
-      );
-      assert.ok(
-        !resetUrl.includes(","),
-        `reset link must contain exactly one origin, got: ${resetUrl}`
-      );
-      assert.match(new URL(resetUrl).pathname, /^\/reset-password$/);
-
-      const token = new URL(resetUrl).searchParams.get("token");
       const newPassword = "Rot4ted!Passw0rd";
-
-      const reset = await api("/auth/reset-password", {
-        method: "POST",
-        body: { token, newPassword, newPasswordConfirm: newPassword },
-      });
+      const reset = await resetWith(user.email, otp, newPassword);
 
       assert.equal(reset.status, 200, JSON.stringify(reset.body));
       assert.ok(reset.body.data.token, "a successful reset should sign the user in");
@@ -233,67 +210,146 @@ describe("Module 11 — sessions, resets, notifications, audit", () => {
       assert.equal(oldLogin.status, 401);
     });
 
-    it("refuses to reuse a spent reset token", async (t) => {
+    it("refuses to reuse a spent code", async (t) => {
       if (isProduction) {
-        return t.skip("reset link is withheld in production");
+        return t.skip("the code is withheld in production");
       }
 
       const user = await register("m11.reset2");
+      const otp = (await requestCode(user.email)).body.data.devOtp;
 
-      const requested = await api("/auth/forgot-password", {
-        method: "POST",
-        body: { email: user.email },
-      });
-
-      const token = new URL(requested.body.data.resetUrl).searchParams.get("token");
-      const newPassword = "An0ther!Passw0rd";
-
-      const first = await api("/auth/reset-password", {
-        method: "POST",
-        body: { token, newPassword, newPasswordConfirm: newPassword },
-      });
+      const first = await resetWith(user.email, otp, "An0ther!Passw0rd");
       assert.equal(first.status, 200);
 
-      const second = await api("/auth/reset-password", {
-        method: "POST",
-        body: { token, newPassword: "Third!Passw0rd1", newPasswordConfirm: "Third!Passw0rd1" },
-      });
-      assert.equal(second.status, 400, "a reset token must be single-use");
+      const second = await resetWith(user.email, otp, "Third!Passw0rd1");
+      assert.equal(second.status, 400, "a code must be single-use");
     });
 
-    it("rejects a garbage reset token", async () => {
-      const response = await api("/auth/reset-password", {
-        method: "POST",
-        body: {
-          token: "f".repeat(64),
-          newPassword: "Wh4tever!Pass",
-          newPasswordConfirm: "Wh4tever!Pass",
-        },
-      });
+    it("rejects a code issued to a different account", async (t) => {
+      if (isProduction) {
+        return t.skip("the code is withheld in production");
+      }
 
+      const victim = await register("m11.victim");
+      const attacker = await register("m11.attacker");
+
+      const victimOtp = (await requestCode(victim.email)).body.data.devOtp;
+      const attackerOtp = (await requestCode(attacker.email)).body.data.devOtp;
+
+      if (victimOtp === attackerOtp) return t.skip("the two random codes happened to match");
+
+      const response = await resetWith(victim.email, attackerOtp, "Stol3n!Passw0rd");
+      assert.equal(response.status, 400, "a code is bound to the account it was sent to");
+    });
+
+    it("burns the code after five wrong guesses", async (t) => {
+      if (isProduction) {
+        return t.skip("the code is withheld in production");
+      }
+
+      const user = await register("m11.reset4");
+      const otp = (await requestCode(user.email)).body.data.devOtp;
+      const wrong = otp === "000000" ? "111111" : "000000";
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const miss = await resetWith(user.email, wrong, "Gu3ssing!Pass");
+        if (miss.status === 429) return t.skip("the per-IP credential limiter engaged first");
+        assert.equal(miss.status, 400);
+      }
+
+      const correct = await resetWith(user.email, otp, "Gu3ssing!Pass");
+      if (correct.status === 429) return t.skip("the per-IP credential limiter engaged first");
+      assert.equal(correct.status, 400, "the right code must not work once the attempts are spent");
+    });
+
+    it("does not send a second code inside the resend cooldown", async (t) => {
+      if (isProduction) {
+        return t.skip("the code is withheld in production");
+      }
+
+      const user = await register("m11.reset5");
+      const first = await requestCode(user.email);
+      const second = await requestCode(user.email);
+
+      assert.equal(second.status, 200);
+      assert.equal(second.body.message, first.body.message, "throttling must look like success");
+      assert.equal(second.body.data?.devOtp, undefined, "no new code inside the cooldown");
+
+      // The first code is still the live one.
+      const reset = await resetWith(user.email, first.body.data.devOtp, "Co0ldown!Pass");
+      assert.equal(reset.status, 200, JSON.stringify(reset.body));
+    });
+
+    it("rejects a malformed code before touching the database", async () => {
+      const response = await resetWith(`nobody.${runId}@example.com`, "12ab", "Wh4tever!Pass");
       assert.equal(response.status, 400);
     });
 
     it("revokes existing sessions after a reset", async (t) => {
       if (isProduction) {
-        return t.skip("reset link is withheld in production");
+        return t.skip("the code is withheld in production");
       }
 
       const user = await register("m11.reset3");
+      const otp = (await requestCode(user.email)).body.data.devOtp;
 
-      const requested = await api("/auth/forgot-password", {
-        method: "POST",
-        body: { email: user.email },
-      });
-      const token = new URL(requested.body.data.resetUrl).searchParams.get("token");
-
-      await api("/auth/reset-password", {
-        method: "POST",
-        body: { token, newPassword: "Fresh!Passw0rd9", newPasswordConfirm: "Fresh!Passw0rd9" },
-      });
+      await resetWith(user.email, otp, "Fresh!Passw0rd9");
 
       const refreshed = await api("/auth/refresh", { method: "POST", cookie: user.cookie });
       assert.equal(refreshed.status, 401, "the pre-reset session must be dead");
+    });
+  });
+
+  // --- Changing the account email ------------------------------------------
+
+  describe("Change email", () => {
+    it("requires the current password", async () => {
+      const user = await register("m11.email1");
+
+      const response = await api("/auth/email", {
+        method: "PATCH",
+        token: user.token,
+        body: { newEmail: `moved1.${runId}@example.com`, currentPassword: "Wrong!Passw0rd" },
+      });
+
+      assert.equal(response.status, 401);
+    });
+
+    it("moves the account, and reset codes follow it", async (t) => {
+      const user = await register("m11.email2");
+      const newEmail = `moved2.${runId}@example.com`;
+
+      const response = await api("/auth/email", {
+        method: "PATCH",
+        token: user.token,
+        body: { newEmail, currentPassword: PASSWORD },
+      });
+      assert.equal(response.status, 200, JSON.stringify(response.body));
+      assert.equal(response.body.data.user.email, newEmail);
+
+      const login = await api("/auth/login", {
+        method: "POST",
+        body: { email: newEmail, password: PASSWORD },
+      });
+      assert.equal(login.status, 200);
+
+      if (isProduction) return t.skip("the code is withheld in production");
+
+      const old = await api("/auth/forgot-password", { method: "POST", body: { email: user.email } });
+      assert.equal(old.body.data?.devOtp, undefined, "the old address no longer gets codes");
+    });
+
+    it("refuses an address another account already uses", async () => {
+      const first = await register("m11.email3");
+      const second = await register("m11.email4");
+
+      const response = await api("/auth/email", {
+        method: "PATCH",
+        token: second.token,
+        body: { newEmail: first.email, currentPassword: PASSWORD },
+      });
+
+      assert.equal(response.status, 409);
     });
   });
 

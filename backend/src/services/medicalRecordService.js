@@ -12,6 +12,7 @@ const auditService = require("./auditService");
 const blockchainService = require("./blockchainService");
 const encryptionService = require("./encryptionService");
 const notificationService = require("./notificationService");
+const telegramService = require("./telegramService");
 const ipfsService = require("./ipfs");
 
 /**
@@ -332,6 +333,7 @@ const uploadRecordForPatient = async ({ actor, patientId, file, payload, req }) 
     message: `${actor.name} uploaded "${record.title}".`,
     link: `/patient/records/${record._id}`,
     email: true,
+    telegram: telegramService.formatDocument({ record, doctorName: actor.name }),
   });
 
   return record.toClientObject();

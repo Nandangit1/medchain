@@ -5,6 +5,7 @@ const authController = require("../controllers/authController");
 const { protect } = require("../middlewares/authMiddleware");
 const validateRequest = require("../middlewares/validateRequest");
 const {
+  changeEmailRules,
   changePasswordRules,
   disableMfaRules,
   forgotPasswordRules,
@@ -36,6 +37,40 @@ const credentialLimiter = rateLimit({
   },
 });
 
+/**
+ * Separate counters for the reset flow and for account changes, so a burst of
+ * failed sign-ins cannot lock someone out of recovering their password, and
+ * vice versa. Each instance keeps its own store.
+ *
+ * The reset ceiling is higher than sign-in because the real brute-force guard
+ * is per code: tokenService burns a code after five wrong guesses, and a new
+ * one can be requested at most once a minute. This limit only stops one IP
+ * from cycling through many accounts.
+ */
+const resetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: {
+    status: "fail",
+    message: "Too many attempts. Please wait a few minutes and try again.",
+  },
+});
+
+const accountChangeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: {
+    status: "fail",
+    message: "Too many attempts. Please wait a few minutes and try again.",
+  },
+});
+
 router.post("/register", registerRules, validateRequest, authController.register);
 router.post("/login", credentialLimiter, loginRules, validateRequest, authController.login);
 router.post("/refresh", authController.refresh);
@@ -43,14 +78,14 @@ router.post("/logout", authController.logout);
 
 router.post(
   "/forgot-password",
-  credentialLimiter,
+  resetLimiter,
   forgotPasswordRules,
   validateRequest,
   authController.forgotPassword
 );
 router.post(
   "/reset-password",
-  credentialLimiter,
+  resetLimiter,
   resetPasswordRules,
   validateRequest,
   authController.resetPassword
@@ -83,6 +118,13 @@ router.post(
 
 router.get("/me", authController.getMe);
 router.patch("/me", updateMeRules, validateRequest, authController.updateMe);
+router.patch(
+  "/email",
+  accountChangeLimiter,
+  changeEmailRules,
+  validateRequest,
+  authController.changeEmail
+);
 router.patch(
   "/change-password",
   changePasswordRules,

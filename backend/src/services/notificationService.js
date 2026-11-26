@@ -5,6 +5,7 @@ const userRepository = require("../repositories/userRepository");
 const AppError = require("../utils/AppError");
 const { buildPagination, buildPaginationMeta } = require("../utils/pagination");
 const mailService = require("./mailService");
+const telegramService = require("./telegramService");
 
 /**
  * Notification Service.
@@ -12,12 +13,17 @@ const mailService = require("./mailService");
  * Like the audit service, `push` never throws — failing to notify someone must
  * not undo the action that triggered it.
  *
- * One call fans out to two channels. In-app is always written; email is opt-in
- * per call via `email: true`, because not every notification deserves an inbox
- * entry — "a doctor opened your record" is useful in the bell menu and noise in
- * a mailbox.
+ * One call fans out to up to three channels. In-app is always written; email is
+ * opt-in per call via `email: true`, because not every notification deserves an
+ * inbox entry — "a doctor opened your record" is useful in the bell menu and
+ * noise in a mailbox.
+ *
+ * Telegram is opt-in the same way: pass `telegram` as pre-formatted HTML (see
+ * telegramService.format*) to post the full content -- the diagnosis, the
+ * guidance -- to the user's linked chat, or `true` for title and message only.
+ * Users who have not linked a chat are skipped silently.
  */
-const push = async ({ user, type, title, message, link, email = false }) => {
+const push = async ({ user, type, title, message, link, email = false, telegram = false }) => {
   let notification = null;
 
   try {
@@ -44,6 +50,18 @@ const push = async ({ user, type, title, message, link, email = false }) => {
     } catch (error) {
       logger.error("Failed to email notification", { type, reason: error.message });
     }
+  }
+
+  if (telegram) {
+    const html =
+      typeof telegram === "string"
+        ? telegram
+        : `<b>${telegramService.escapeHtml(title)}</b>
+
+${telegramService.escapeHtml(message)}`;
+
+    // sendToUser never throws; delivery failures are logged inside it.
+    await telegramService.sendToUser(user, html, link);
   }
 
   return notification;

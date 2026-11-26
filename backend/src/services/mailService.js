@@ -21,7 +21,52 @@ const logger = require("../config/logger");
 let transporter = null;
 let verified = false;
 
-const isEnabled = () => env.MAIL_ENABLED && Boolean(env.SMTP_HOST);
+const isEnabled = () => {
+  if (!env.MAIL_ENABLED) return false;
+  return env.MAIL_PROVIDER === "brevo" ? Boolean(env.BREVO_API_KEY) : Boolean(env.SMTP_HOST);
+};
+
+/** "MedChain <someone@gmail.com>" -> { name: "MedChain", email: "someone@gmail.com" } */
+const parseAddress = (value) => {
+  const match = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/.exec(String(value));
+  if (match) return { name: match[1].trim() || undefined, email: match[2].trim() };
+  return { email: String(value).trim() };
+};
+
+/**
+ * Brevo's transactional API over HTTPS.
+ *
+ * Exists because Render's free tier blocks outbound SMTP: nodemailer there
+ * hangs until it times out, and the message is never sent. Port 443 is open
+ * everywhere. The sender in MAIL_FROM must be verified in Brevo (Senders &
+ * IP -> Senders) -- a Gmail address is accepted after its confirmation mail.
+ */
+const sendViaBrevo = async ({ to, subject, html, text }) => {
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "api-key": env.BREVO_API_KEY,
+      "content-type": "application/json",
+      accept: "application/json",
+    },
+    body: JSON.stringify({
+      sender: parseAddress(env.MAIL_FROM),
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+      textContent: text,
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(`Brevo rejected the message (${response.status}): ${payload.message || "no detail"}`);
+  }
+
+  return { messageId: payload.messageId };
+};
 
 /**
  * Built once and reused: nodemailer pools connections, and re-creating the
@@ -108,6 +153,12 @@ const send = async ({ to, subject, title, body, action }) => {
   }
 
   try {
+    if (env.MAIL_PROVIDER === "brevo") {
+      const info = await sendViaBrevo({ to, subject, html, text: stripHtml(html) });
+      logger.info("Mail sent via Brevo", { to, subject, messageId: info.messageId });
+      return { delivered: true };
+    }
+
     // Verified once per process: a bad password should surface as a clear log
     // line at first send rather than as a silent failure on every message.
     if (!verified) {
