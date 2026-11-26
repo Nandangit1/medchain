@@ -1,5 +1,18 @@
 const { body } = require("express-validator");
+
 const { ROLES } = require("../constants/roles");
+
+/**
+ * Same address in, same account out -- but a "+tag" alias is kept.
+ *
+ * validator.js strips "+tag" from Gmail addresses by default, which folds
+ * name+anything@gmail.com into name@gmail.com: an alias could never be its
+ * own account, and trying to use one collided with the base address. Mail
+ * providers deliver aliases to the same inbox, which is exactly why people
+ * use them for separate accounts. Dot-stripping stays as before, so every
+ * existing stored address still matches at sign-in.
+ */
+const EMAIL_NORMALIZATION = { gmail_remove_subaddress: false };
 
 const passwordRule = (field) =>
   body(field)
@@ -21,7 +34,7 @@ exports.registerRules = [
     .trim()
     .isLength({ min: 2, max: 80 })
     .withMessage("Name must contain 2 to 80 characters."),
-  body("email").trim().isEmail().withMessage("Please provide a valid email address.").normalizeEmail(),
+  body("email").trim().isEmail().withMessage("Please provide a valid email address.").normalizeEmail(EMAIL_NORMALIZATION),
   passwordRule("password"),
   body("role")
     .isIn([ROLES.PATIENT, ROLES.DOCTOR])
@@ -56,7 +69,7 @@ exports.registerRules = [
 ];
 
 exports.loginRules = [
-  body("email").trim().isEmail().withMessage("Please provide a valid email address.").normalizeEmail(),
+  body("email").trim().isEmail().withMessage("Please provide a valid email address.").normalizeEmail(EMAIL_NORMALIZATION),
   body("password").notEmpty().withMessage("Password is required."),
 ];
 
@@ -85,11 +98,11 @@ exports.updateMeRules = [
 ];
 
 exports.forgotPasswordRules = [
-  body("email").trim().isEmail().withMessage("Please provide a valid email address.").normalizeEmail(),
+  body("email").trim().isEmail().withMessage("Please provide a valid email address.").normalizeEmail(EMAIL_NORMALIZATION),
 ];
 
 exports.resetPasswordRules = [
-  body("email").trim().isEmail().withMessage("Please provide a valid email address.").normalizeEmail(),
+  body("email").trim().isEmail().withMessage("Please provide a valid email address.").normalizeEmail(EMAIL_NORMALIZATION),
   body("otp")
     .isString()
     .trim()
@@ -102,7 +115,7 @@ exports.resetPasswordRules = [
 ];
 
 exports.changeEmailRules = [
-  body("newEmail").trim().isEmail().withMessage("Please provide a valid email address.").normalizeEmail(),
+  body("newEmail").trim().isEmail().withMessage("Please provide a valid email address.").normalizeEmail(EMAIL_NORMALIZATION),
   body("currentPassword").notEmpty().withMessage("Current password is required."),
 ];
 
