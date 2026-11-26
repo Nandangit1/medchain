@@ -219,6 +219,9 @@ const listPatientGrants = async ({ actor, query }) => {
   };
 };
 
+/** How long a share may wait for its on-chain confirmation before the chain may veto it. */
+const UNCONFIRMED_GRANT_GRACE_MS = 15 * 60 * 1000;
+
 /**
  * The gate used by the record service before decrypting anything for a doctor.
  *
@@ -231,7 +234,28 @@ const doctorCanRead = async (doctor, record) => {
     return false;
   }
 
-  // The chain may veto, but an unreachable chain must not lock clinicians out.
+  /**
+   * A grant made moments ago is not on-chain yet: in background mode on a
+   * public chain its transaction confirms 30-60 s after the share. Asking the
+   * chain in that window answers "no access" and locks out the doctor the
+   * patient just shared with, so a fresh unconfirmed grant is trusted for a
+   * short grace period.
+   *
+   * The window is deliberately short. The veto exists so that a row written
+   * straight into the database cannot open a record on its own; an unlimited
+   * "pending means allowed" rule would hand exactly that bypass to anyone with
+   * database access. After the grace period the chain's answer counts again
+   * (and an unreachable chain still never locks clinicians out, below).
+   */
+  const grantedAt = new Date(permission.grantedAt || permission.createdAt || 0).getTime();
+  if (
+    permission.grantTx?.status !== BLOCKCHAIN_SYNC_STATUS.CONFIRMED &&
+    Date.now() - grantedAt < UNCONFIRMED_GRANT_GRACE_MS
+  ) {
+    return true;
+  }
+
+  // An unreachable chain must not lock clinicians out either.
   const address = doctor.walletAddress || blockchainService.deriveCustodialAddress(doctor._id);
   const onChain = await blockchainService.hasAccessOnChain(record.blockchain?.onChainId, address);
 
