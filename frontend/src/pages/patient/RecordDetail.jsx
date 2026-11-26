@@ -6,6 +6,7 @@ import {
   FiCheckCircle,
   FiClock,
   FiDownload,
+  FiSend,
   FiShare2,
   FiShield,
   FiTrash2,
@@ -42,12 +43,26 @@ const RecordDetail = () => {
   const [showShare, setShowShare] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [sendingTelegram, setSendingTelegram] = useState(false);
   const [verification, setVerification] = useState(null);
   const [downloading, setDownloading] = useState(false);
 
   const record = useApi(() => recordApi.get(recordId), [recordId]);
   const history = useApi(() => recordApi.history(recordId), [recordId]);
   const access = useApi(() => recordApi.access(recordId), [recordId]);
+
+  const handleTelegram = async () => {
+    setSendingTelegram(true);
+
+    try {
+      await recordApi.sendToTelegram(recordId);
+      toast.success("Report details sent to your Telegram.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setSendingTelegram(false);
+    }
+  };
 
   if (record.loading) return <Loader label="Loading record..." />;
   if (record.error) return <ErrorState message={record.error} onRetry={record.refetch} />;
@@ -120,6 +135,10 @@ const RecordDetail = () => {
             <Button size="sm" variant="outline-primary" onClick={() => setShowShare(true)}>
               <FiShare2 className="me-1" />
               Share
+            </Button>
+            <Button size="sm" variant="outline-info" onClick={handleTelegram} disabled={sendingTelegram}>
+              <FiSend className="me-1" />
+              {sendingTelegram ? "Sending..." : "Send to Telegram"}
             </Button>
             <Button size="sm" onClick={handleDownload} disabled={downloading}>
               <FiDownload className="me-1" />

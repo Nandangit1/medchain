@@ -21,6 +21,15 @@ exports.uploadRecord = catchAsync(async (req, res) => {
   sendSuccess(res, 201, "Medical record uploaded and pinned successfully.", { record });
 });
 
+exports.sendToTelegram = catchAsync(async (req, res) => {
+  const result = await medicalRecordService.sendRecordToTelegram({
+    actor: req.user,
+    recordId: req.params.recordId,
+  });
+
+  sendSuccess(res, 200, "Report details sent to your Telegram.", result);
+});
+
 exports.getRecords = catchAsync(async (req, res) => {
   const result = await medicalRecordService.listRecords({
     actor: req.user,

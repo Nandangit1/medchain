@@ -325,6 +325,29 @@ describe("Telegram message formatting", () => {
     assert.match(html, /Follow-up/);
   });
 
+  it("puts a report's findings, date, tags and fingerprint in the message", () => {
+    const html = telegramService.formatRecord({
+      record: {
+        title: "Complete Blood Count",
+        recordType: "lab_report",
+        recordDate: "2026-11-10T00:00:00Z",
+        description: "Haemoglobin 13.8 g/dL <normal>",
+        tags: ["blood test", "routine"],
+        file: { originalName: "cbc.pdf", size: 52_000 },
+        integrity: { fileHash: "a".repeat(64) },
+        blockchain: { status: "pending" },
+      },
+      heading: "Report saved to MedChain",
+    });
+
+    assert.match(html, /Complete Blood Count/);
+    assert.match(html, /Haemoglobin 13\.8 g\/dL &lt;normal&gt;/);
+    assert.match(html, /#blood_test #routine/);
+    assert.match(html, /cbc\.pdf \(51 KB\)/);
+    assert.match(html, /aaaaaaaaaaaaaaaa…/);
+    assert.match(html, /waiting to be anchored/);
+  });
+
   it("never claims to attach the file itself", () => {
     const html = telegramService.formatDocument({
       record: { title: "CBC report", recordType: "lab_report" },

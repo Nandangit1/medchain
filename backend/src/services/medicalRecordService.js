@@ -275,7 +275,30 @@ const uploadRecord = async ({ actor, file, payload, req }) => {
     req,
   });
 
+  // A copy of the report details on the patient's phone, when they have
+  // linked Telegram. Not awaited: the upload must not wait on Telegram.
+  telegramService
+    .sendToUser(
+      patient._id,
+      telegramService.formatRecord({ record, heading: "Report saved to MedChain" }),
+      `/patient/records/${record._id}`
+    )
+    .catch(() => null);
+
   return record.toClientObject();
+};
+
+/** "Send to Telegram" on a record page. */
+const sendRecordToTelegram = async ({ actor, recordId }) => {
+  const record = await medicalRecordRepository.findById(recordId);
+
+  if (!record) {
+    throw new AppError("Medical record not found.", 404);
+  }
+
+  await assertCanViewMetadata(actor, record);
+
+  return telegramService.sendRecordToOwner({ actor, record });
 };
 
 /**
@@ -548,6 +571,7 @@ module.exports = {
   downloadRecord,
   getRecordById,
   listRecords,
+  sendRecordToTelegram,
   updateRecordMetadata,
   uploadRecord,
   uploadRecordForPatient,

@@ -88,6 +88,7 @@ export const recordApi = {
   access: (id) => apiClient.get(`/records/${id}/access`).then(unwrap),
   share: (id, payload) => apiClient.post(`/records/${id}/share`, payload).then(unwrap),
   revoke: (id, doctorId) => apiClient.delete(`/records/${id}/share/${doctorId}`).then(unwrap),
+  sendToTelegram: (id) => apiClient.post(`/records/${id}/telegram`).then(unwrap),
 };
 
 // --- Patient ----------------------------------------------------------------

@@ -5,6 +5,7 @@ const logger = require("../config/logger");
 const { AUDIT_ACTIONS } = require("../constants/audit");
 const { ROLES } = require("../constants/roles");
 const diagnosisRepository = require("../repositories/diagnosisRepository");
+const medicalRecordRepository = require("../repositories/medicalRecordRepository");
 const userRepository = require("../repositories/userRepository");
 const AppError = require("../utils/AppError");
 const auditService = require("./auditService");
@@ -167,19 +168,69 @@ const formatDiagnosis = ({ diagnosis, doctorName, heading = "🩺 New diagnosis 
   return lines.join("\n");
 };
 
-const formatDocument = ({ record, doctorName }) =>
-  [
-    "<b>📄 Your doctor added a document</b>",
+const RECORD_TYPE_ICONS = {
+  lab_report: "🧪",
+  prescription: "💊",
+  diagnosis: "🩺",
+  imaging: "🩻",
+  discharge_summary: "🏥",
+  vaccination: "💉",
+  insurance: "🛡️",
+};
+
+const formatSize = (bytes) => {
+  if (!bytes) return null;
+  return bytes < 1024 * 1024
+    ? `${Math.max(1, Math.round(bytes / 1024))} KB`
+    : `${(bytes / 1048576).toFixed(1)} MB`;
+};
+
+const ANCHOR_LABELS = {
+  confirmed: "✅ anchored on the blockchain",
+  pending: "⏳ waiting to be anchored on the blockchain",
+  failed: "⚠️ anchoring failed (will retry)",
+};
+
+/**
+ * Everything MedChain knows about a report, as one message: what it is, when
+ * it was taken, the findings written in its description, and the proof that it
+ * has not been altered. The file itself is never attached -- see the header.
+ */
+const formatRecord = ({ record, heading, uploaderName }) => {
+  const type = String(record.recordType || "other");
+  const icon = RECORD_TYPE_ICONS[type] || "📄";
+  const tags = (record.tags || []).filter(Boolean);
+  const hash = record.integrity?.fileHash;
+  const size = formatSize(record.file?.size);
+
+  return [
+    `<b>${icon} ${escapeHtml(heading || "Medical report")}</b>`,
     "",
-    `<b>Doctor:</b> ${escapeHtml(doctorName)}`,
     `<b>Title:</b> ${escapeHtml(record.title)}`,
-    `<b>Type:</b> ${escapeHtml(String(record.recordType || "document").replace(/_/g, " "))}`,
-    record.description ? `<b>Notes:</b> ${escapeHtml(record.description)}` : null,
+    `<b>Type:</b> ${escapeHtml(type.replace(/_/g, " "))}`,
+    record.recordDate ? `<b>Report date:</b> ${formatDate(record.recordDate)}` : null,
+    uploaderName ? `<b>Added by:</b> ${escapeHtml(uploaderName)}` : null,
+    record.description ? `\n<b>Details:</b>\n${escapeHtml(record.description)}` : null,
+    tags.length
+      ? `\n<b>Tags:</b> ${tags.map((tag) => `#${escapeHtml(tag.replace(/\s+/g, "_"))}`).join(" ")}`
+      : null,
     "",
-    "<i>The file itself stays encrypted in MedChain. Open it there to view or download.</i>",
+    record.file?.originalName
+      ? `<b>File:</b> ${escapeHtml(record.file.originalName)}${size ? ` (${size})` : ""}`
+      : null,
+    hash ? `<b>Fingerprint:</b> <code>${escapeHtml(hash.slice(0, 16))}…</code>` : null,
+    record.blockchain?.status
+      ? `<b>Integrity:</b> ${ANCHOR_LABELS[record.blockchain.status] || escapeHtml(record.blockchain.status)}`
+      : null,
+    "",
+    "<i>The file stays encrypted in MedChain. Tap the button to view or download it.</i>",
   ]
     .filter((line) => line !== null)
     .join("\n");
+};
+
+const formatDocument = ({ record, doctorName }) =>
+  formatRecord({ record, heading: "Your doctor added a document", uploaderName: doctorName });
 
 const formatVisitNotes = ({ appointment, doctorName, notes }) =>
   [
@@ -285,6 +336,7 @@ const sendTest = async ({ actor }) => {
 const HELP_TEXT = [
   "<b>MedChain bot</b>",
   "",
+  "/reports – your five most recent medical reports",
   "/latest – your five most recent diagnoses and doctor guidance",
   "/stop – disconnect this chat from MedChain",
   "/help – show this message",
@@ -373,6 +425,50 @@ const sendLatest = async (chatId) => {
   await sendMessage(chatId, `<b>🩺 Your latest doctor notes</b>\n\n${blocks.join("\n\n")}`, "/patient/records");
 };
 
+const sendLatestReports = async (chatId) => {
+  const user = await userRepository.findByTelegramChatId(chatId);
+
+  if (!user) {
+    await sendMessage(chatId, "This chat is not connected yet.\n\n" + HELP_TEXT);
+    return;
+  }
+
+  if (user.role !== ROLES.PATIENT) {
+    await sendMessage(chatId, "/reports lists medical records, so it only works on patient accounts.");
+    return;
+  }
+
+  const { records, totalItems } = await medicalRecordRepository.findManyPaginated(
+    { patient: user._id },
+    { skip: 0, limit: 5 },
+    { recordDate: -1, createdAt: -1 }
+  );
+
+  if (records.length === 0) {
+    await sendMessage(
+      chatId,
+      "You have no medical reports in MedChain yet. Upload one on the website and it will appear here."
+    );
+    return;
+  }
+
+  const lines = records.map((record, index) => {
+    const icon = RECORD_TYPE_ICONS[record.recordType] || "📄";
+    const summary = record.description
+      ? `\n   ${escapeHtml(record.description.slice(0, 160))}${record.description.length > 160 ? "…" : ""}`
+      : "";
+    return `${index + 1}. ${icon} <b>${escapeHtml(record.title)}</b> · ${formatDate(
+      record.recordDate || record.createdAt
+    )}${summary}`;
+  });
+
+  await sendMessage(
+    chatId,
+    `<b>📁 Your latest reports</b> (${records.length} of ${totalItems})\n\n${lines.join("\n\n")}`,
+    "/patient/records"
+  );
+};
+
 const stopChat = async (chatId) => {
   const user = await userRepository.findByTelegramChatId(chatId);
 
@@ -409,6 +505,9 @@ const handleUpdate = async (update) => {
       case "/latest":
         await sendLatest(chatId);
         break;
+      case "/reports":
+        await sendLatestReports(chatId);
+        break;
       case "/stop":
         await stopChat(chatId);
         break;
@@ -418,6 +517,35 @@ const handleUpdate = async (update) => {
   } catch (error) {
     logger.error("Telegram update handling failed", { reason: error.message });
   }
+};
+
+/**
+ * Sends one record's details to its patient on demand ("Send to Telegram").
+ * Only the owning patient may do this; the caller has already loaded the
+ * record through the normal permission check.
+ */
+const sendRecordToOwner = async ({ actor, record }) => {
+  const ownerId = String(record.patient?._id ?? record.patient);
+
+  if (actor.role !== ROLES.PATIENT || ownerId !== String(actor._id)) {
+    throw new AppError("Only the patient who owns this record can send it to Telegram.", 403);
+  }
+
+  if (!isEnabled()) {
+    throw new AppError("Telegram is not configured on this server yet.", 503);
+  }
+
+  const delivered = await sendToUser(
+    actor._id,
+    formatRecord({ record, heading: "Medical report", uploaderName: record.uploadedBy?.name }),
+    `/patient/records/${record._id}`
+  );
+
+  if (!delivered) {
+    throw new AppError("Connect Telegram on your Profile page first, then try again.", 400);
+  }
+
+  return { delivered };
 };
 
 /** Constant-time check of the header Telegram echoes back on every webhook call. */
@@ -466,6 +594,7 @@ const start = async () => {
 
     await callApi("setMyCommands", {
       commands: [
+        { command: "reports", description: "Your latest medical reports" },
         { command: "latest", description: "Recent diagnoses and doctor guidance" },
         { command: "stop", description: "Disconnect this chat" },
         { command: "help", description: "How this bot works" },
@@ -500,11 +629,13 @@ module.exports = {
   escapeHtml,
   formatDiagnosis,
   formatDocument,
+  formatRecord,
   formatVisitNotes,
   getStatus,
   handleUpdate,
   isEnabled,
   isValidWebhookSecret,
+  sendRecordToOwner,
   sendTest,
   sendToUser,
   start,

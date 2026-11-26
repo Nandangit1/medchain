@@ -1,4 +1,5 @@
 const express = require("express");
+const { param } = require("express-validator");
 
 const accessController = require("../controllers/accessController");
 const medicalRecordController = require("../controllers/medicalRecordController");
@@ -94,6 +95,14 @@ router.get(
   accessRecordIdRules,
   validateRequest,
   accessController.listRecordAccess
+);
+
+router.post(
+  "/:recordId/telegram",
+  authorize(ROLES.PATIENT),
+  [param("recordId").isMongoId().withMessage("Invalid record id.")],
+  validateRequest,
+  medicalRecordController.sendToTelegram
 );
 
 router.post(
