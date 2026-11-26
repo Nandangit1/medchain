@@ -8,9 +8,13 @@ independently verifiable.
 > BE Final Year Project · Node.js · Express · MongoDB · Solidity · IPFS · React
 
 **Live:** https://medchain-y4k0.onrender.com — deployed from `render.yaml`
-against MongoDB Atlas and Pinata. Blockchain anchoring is off there until the
-contract is on a public testnet; records still encrypt, store and verify, and
-sit at `blockchain.status: "pending"` until it is enabled.
+against MongoDB Atlas and Pinata, with records anchored on the **Ethereum
+Sepolia testnet** at
+[`0x0A5169B96bA16a642E9904309239e2AA2e2e4178`](https://sepolia.etherscan.io/address/0x0A5169B96bA16a642E9904309239e2AA2e2e4178).
+On a public chain, writes run in the background: an upload answers at once as
+"pending" and is confirmed on-chain about a minute later.
+
+Looking after the live site: [`docs/maintenance.md`](docs/maintenance.md).
 
 > The free tier sleeps after ~15 minutes idle, so the first request afterwards
 > takes 30–60 seconds. Atlas also pauses a free cluster after prolonged
@@ -351,7 +355,7 @@ Importable Postman collection: [`docs/postman-collection.json`](docs/postman-col
 
 Everything is indexed in [`docs/README.md`](docs/README.md):
 
-- **Guides** — [installation](docs/installation-guide.md) · [deployment](docs/deployment-guide.md) · [testing](docs/testing-guide.md)
+- **Guides** — [installation](docs/installation-guide.md) · [deployment](docs/deployment-guide.md) · [testing](docs/testing-guide.md) · [maintenance](docs/maintenance.md)
 - **Diagrams** (Mermaid) — [ER](docs/diagrams/er-diagram.md) · [DFD](docs/diagrams/dfd.md) · [class](docs/diagrams/class-diagram.md) · [sequence](docs/diagrams/sequence-diagrams.md) · [component](docs/diagrams/component-diagram.md)
 - **Submission** — [IEEE report content](docs/ieee-report-content.md) · [viva question bank](docs/viva-questions.md)
 - **Blockchain layer** — [docs/blockchain.md](docs/blockchain.md)

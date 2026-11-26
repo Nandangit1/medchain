@@ -72,7 +72,10 @@ const findUnsyncedGrants = (limit, maxAttempts) =>
   AccessPermission.find({
     revokedAt: null,
     "grantTx.status": { $ne: BLOCKCHAIN_SYNC_STATUS.CONFIRMED },
-    $or: [{ "grantTx.attempts": { $exists: false } }, { "grantTx.attempts": { $lt: maxAttempts } }],
+    $and: [
+      { $or: [{ "grantTx.attempts": { $exists: false } }, { "grantTx.attempts": { $lt: maxAttempts } }] },
+      { $or: [{ "grantTx.nextAttemptAt": { $exists: false } }, { "grantTx.nextAttemptAt": { $lte: new Date() } }] },
+    ],
   })
     .sort({ createdAt: 1 })
     .limit(limit)
@@ -84,7 +87,10 @@ const findUnsyncedRevokes = (limit, maxAttempts) =>
     revokedAt: { $ne: null },
     "grantTx.status": BLOCKCHAIN_SYNC_STATUS.CONFIRMED,
     "revokeTx.status": { $ne: BLOCKCHAIN_SYNC_STATUS.CONFIRMED },
-    $or: [{ "revokeTx.attempts": { $exists: false } }, { "revokeTx.attempts": { $lt: maxAttempts } }],
+    $and: [
+      { $or: [{ "revokeTx.attempts": { $exists: false } }, { "revokeTx.attempts": { $lt: maxAttempts } }] },
+      { $or: [{ "revokeTx.nextAttemptAt": { $exists: false } }, { "revokeTx.nextAttemptAt": { $lte: new Date() } }] },
+    ],
   })
     .sort({ revokedAt: 1 })
     .limit(limit)
@@ -94,8 +100,21 @@ const findUnsyncedRevokes = (limit, maxAttempts) =>
 const findLiveByRecord = (recordId) =>
   AccessPermission.find({ record: recordId, revokedAt: null }).exec();
 
+/** Gives grants and revocations that exhausted their retries a fresh set. */
+const resetExhaustedTransactions = async (maxAttempts) => {
+  await AccessPermission.updateMany(
+    { "grantTx.status": BLOCKCHAIN_SYNC_STATUS.FAILED, "grantTx.attempts": { $gte: maxAttempts } },
+    { $set: { "grantTx.attempts": 0 }, $unset: { "grantTx.nextAttemptAt": 1 } }
+  );
+  await AccessPermission.updateMany(
+    { "revokeTx.status": BLOCKCHAIN_SYNC_STATUS.FAILED, "revokeTx.attempts": { $gte: maxAttempts } },
+    { $set: { "revokeTx.attempts": 0 }, $unset: { "revokeTx.nextAttemptAt": 1 } }
+  );
+};
+
 module.exports = {
   findLiveByRecord,
+  resetExhaustedTransactions,
   findUnsyncedGrants,
   findUnsyncedRevokes,
   create,

@@ -26,7 +26,13 @@ import {
 } from "../../components/common";
 import ShareModal from "../../components/ShareModal";
 import useApi from "../../hooks/useApi";
-import { recordApi } from "../../services";
+import { healthApi, recordApi } from "../../services";
+
+/** Public block explorers, so a reader can check an anchor themselves. */
+const EXPLORERS = {
+  1: "https://etherscan.io",
+  11155111: "https://sepolia.etherscan.io",
+};
 
 const EVENT_LABELS = {
   RecordAnchored: "Record anchored on-chain",
@@ -49,6 +55,8 @@ const RecordDetail = () => {
 
   const record = useApi(() => recordApi.get(recordId), [recordId]);
   const history = useApi(() => recordApi.history(recordId), [recordId]);
+  const health = useApi(() => healthApi.get(), []);
+  const explorer = EXPLORERS[health.data?.blockchain?.chainId];
   const access = useApi(() => recordApi.access(recordId), [recordId]);
 
   const handleTelegram = async () => {
@@ -253,8 +261,25 @@ const RecordDetail = () => {
               {item.blockchain?.txHash && (
                 <code className="bts-mono d-block text-break mt-1">{item.blockchain.txHash}</code>
               )}
-              {item.blockchain?.lastError && (
-                <div className="text-danger small mt-1">{item.blockchain.lastError}</div>
+              {explorer && item.blockchain?.txHash && (
+                <a
+                  className="small d-inline-block mt-1"
+                  href={`${explorer}/tx/${item.blockchain.txHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View on Etherscan ↗
+                </a>
+              )}
+              {item.blockchain?.status === "pending" && (
+                <div className="text-muted small mt-1">
+                  Being written to the blockchain. This usually takes about a minute.
+                </div>
+              )}
+              {item.blockchain?.status !== "confirmed" && item.blockchain?.lastError && (
+                <div className="text-danger small mt-1">
+                  Not on the blockchain yet; retrying automatically. ({item.blockchain.lastError.slice(0, 160)})
+                </div>
               )}
             </div>
           </div>

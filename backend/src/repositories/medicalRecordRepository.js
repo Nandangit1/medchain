@@ -68,15 +68,29 @@ const findUnanchored = (limit, maxAttempts) =>
   MedicalRecord.find(
     notDeleted({
       "blockchain.status": { $ne: BLOCKCHAIN_SYNC_STATUS.CONFIRMED },
-      $or: [{ "blockchain.attempts": { $exists: false } }, { "blockchain.attempts": { $lt: maxAttempts } }],
+      $and: [
+        { $or: [{ "blockchain.attempts": { $exists: false } }, { "blockchain.attempts": { $lt: maxAttempts } }] },
+        { $or: [{ "blockchain.nextAttemptAt": { $exists: false } }, { "blockchain.nextAttemptAt": { $lte: new Date() } }] },
+      ],
     })
   )
     .sort({ createdAt: 1 })
     .limit(limit)
     .exec();
 
+/** Gives records that exhausted their retries a fresh set of attempts. */
+const resetExhaustedAnchors = (maxAttempts) =>
+  MedicalRecord.updateMany(
+    notDeleted({
+      "blockchain.status": BLOCKCHAIN_SYNC_STATUS.FAILED,
+      "blockchain.attempts": { $gte: maxAttempts },
+    }),
+    { $set: { "blockchain.attempts": 0 }, $unset: { "blockchain.nextAttemptAt": 1 } }
+  );
+
 module.exports = {
   findUnanchored,
+  resetExhaustedAnchors,
   countByPatient,
   create,
   existsByPatientAndHash,

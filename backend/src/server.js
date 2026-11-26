@@ -65,6 +65,34 @@ const startServer = async () => {
 
   // Re-drives anything not yet on-chain, then keeps doing so periodically.
   chainSyncService.start();
+
+  startKeepAwake();
+};
+
+/**
+ * Render's free tier stops an instance after ~15 minutes without inbound
+ * requests, and the next visitor waits 30-60 s for it to boot. A request to
+ * the site's own public URL goes out through Render's proxy and back in, so
+ * it counts as traffic and the instance never idles out.
+ *
+ * Self-contained on purpose: the GitHub Actions ping is a second line, but
+ * GitHub pauses scheduled workflows after 60 days without a commit, which is
+ * exactly when nobody is around to notice. Only runs on Render, and can be
+ * switched off with KEEP_AWAKE=false.
+ */
+const KEEP_AWAKE_INTERVAL_MS = 10 * 60 * 1000;
+
+const startKeepAwake = () => {
+  const onRender = process.env.RENDER === "true";
+  const disabled = String(process.env.KEEP_AWAKE || "").toLowerCase() === "false";
+
+  if (!onRender || disabled || !/^https:\/\//.test(env.APP_URL)) return;
+
+  const target = `${env.APP_URL}/api/v1/health`;
+  const timer = setInterval(() => {
+    fetch(target, { signal: AbortSignal.timeout(30000) }).catch(() => null);
+  }, KEEP_AWAKE_INTERVAL_MS);
+  timer.unref?.();
 };
 
 process.on("uncaughtException", (error) => {

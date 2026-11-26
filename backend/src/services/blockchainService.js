@@ -27,6 +27,9 @@ const AppError = require("../utils/AppError");
 
 const isEnabled = () => env.BLOCKCHAIN_ENABLED;
 
+/** Below this, the registrar is warned about in logs and in /health. */
+const LOW_BALANCE_ETH = 0.02;
+
 /**
  * Derives a deterministic wallet address for a user.
  *
@@ -248,6 +251,55 @@ const verifyDoctorOnChain = async (doctor, adminId) => {
  *          never as a thrown exception, so an upload is never lost to a chain
  *          problem.
  */
+/**
+ * Finds a record already anchored for this patient with this content hash.
+ *
+ * Exists for one failure mode: the anchor transaction was mined, but the
+ * server never saw the receipt (an RPC timeout, a restart mid-wait). The
+ * database still says "not anchored", and every retry is then refused by the
+ * contract as DuplicateContentHash -- the record would show "Failed" forever
+ * while actually being on-chain. Reading the patient's ids back recovers it.
+ *
+ * @returns {Promise<string|null>} the on-chain record id, if found
+ */
+/**
+ * True when a failed call was the contract reverting with the named custom
+ * error. ethers often cannot name it ("unknown custom error") when the revert
+ * surfaces during gas estimation, so the raw revert data is decoded against
+ * the contract's own ABI instead of trusting the message text.
+ */
+const isRevertNamed = (error, name) => {
+  if (error?.revert?.name === name || String(error?.message ?? "").includes(name)) return true;
+
+  const data =
+    error?.data ??
+    error?.info?.error?.data ??
+    /data="(0x[0-9a-fA-F]+)"/.exec(String(error?.message ?? ""))?.[1];
+
+  if (typeof data !== "string" || !data.startsWith("0x")) return false;
+
+  try {
+    return getConnection().contract.interface.parseError(data)?.name === name;
+  } catch {
+    return false;
+  }
+};
+
+const findExistingAnchor = async ({ patient, record }) => {
+  const { contract } = getConnection();
+  const address = patient.walletAddress || deriveCustodialAddress(patient._id);
+  const wanted = toBytes32(record.integrity.fileHash).toLowerCase();
+  const ids = await contract.getPatientRecordIds(address);
+
+  // Newest first: the missed anchor is almost always the latest one.
+  for (const id of [...ids].reverse()) {
+    const onChain = await contract.getRecord(id);
+    if (String(onChain.contentHash).toLowerCase() === wanted) return id.toString();
+  }
+
+  return null;
+};
+
 const anchorRecord = async ({ patient, record }) => {
   if (!isEnabled()) {
     return { status: BLOCKCHAIN_SYNC_STATUS.PENDING };
@@ -300,6 +352,19 @@ const anchorRecord = async ({ patient, record }) => {
       anchoredAt: new Date(),
     };
   } catch (error) {
+    if (isRevertNamed(error, "DuplicateContentHash")) {
+      const recoveredId = await findExistingAnchor({ patient, record }).catch(() => null);
+
+      if (recoveredId) {
+        return {
+          status: BLOCKCHAIN_SYNC_STATUS.CONFIRMED,
+          onChainId: recoveredId,
+          anchoredAt: new Date(),
+          lastError: "Recovered: already anchored on-chain; the original receipt was missed.",
+        };
+      }
+    }
+
     await logTransaction({
       type: CHAIN_TX_TYPES.ANCHOR_RECORD,
       status: BLOCKCHAIN_SYNC_STATUS.FAILED,
@@ -586,12 +651,15 @@ const getStatus = async () => {
   }
 
   try {
-    const { provider, contract, address } = getConnection();
-    const [blockNumber, network, recordCount] = await Promise.all([
+    const { provider, contract, address, signer } = getConnection();
+    const [blockNumber, network, recordCount, balance] = await Promise.all([
       provider.getBlockNumber(),
       provider.getNetwork(),
       contract.recordCount(),
+      provider.getBalance(signer.address),
     ]);
+
+    const balanceEth = Number(ethers.formatEther(balance));
 
     return {
       enabled: true,
@@ -600,6 +668,11 @@ const getStatus = async () => {
       chainId: Number(network.chainId),
       blockNumber,
       recordCount: recordCount.toString(),
+      // The registrar pays for every anchor. When it runs dry, anchoring
+      // stops; surfaced here so it is visible before that happens.
+      registrarAddress: signer.address,
+      registrarBalance: balanceEth.toFixed(4),
+      lowBalance: balanceEth < LOW_BALANCE_ETH,
     };
   } catch (error) {
     return { enabled: true, connected: false, reason: error.message };
@@ -610,6 +683,7 @@ module.exports = {
   anchorRecord,
   deriveCustodialAddress,
   ensureParticipantRegistered,
+  findExistingAnchor,
   getOnChainRecord,
   getRecordHistory,
   getStatus,

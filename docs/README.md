@@ -6,6 +6,7 @@
 | --- | --- |
 | [installation-guide.md](installation-guide.md) | Clean-machine setup, all five terminals, troubleshooting table |
 | [deployment-guide.md](deployment-guide.md) | Atlas, Pinata, Sepolia, TLS, index creation, backup strategy |
+| [maintenance.md](maintenance.md) | Keeping the live site healthy: monthly check, problem → fix list, accounts, secrets |
 | [testing-guide.md](testing-guide.md) | How to run all 144 tests, what each proves, and the honest gaps |
 
 ## Reference

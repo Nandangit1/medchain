@@ -104,7 +104,7 @@ Not required for submission; listed in rough order of value.
 - [x] ~~Migrate `authController` / `adminController` onto repositories~~
 - [x] ~~Magic-byte file-type sniffing~~
 - [x] ~~SMTP transport for password-reset emails~~ — `mailService`, off by default
-- [ ] Deploy to Sepolia and record the address in the report
+- [x] ~~Deploy to Sepolia~~ — `0x0A5169B96bA16a642E9904309239e2AA2e2e4178`, live on Render with background anchoring
 - [ ] Switch `IPFS_DRIVER=pinata` and verify against real IPFS
 - [ ] Redis-backed rate limiting
 - [x] ~~Docker Compose for one-command startup~~ — `docker-compose.yml`
@@ -137,9 +137,8 @@ already handled versus what still needs your accounts:
 - [ ] Generate fresh `JWT_SECRET`, `FILE_ENCRYPTION_KEY`, `CUSTODIAL_WALLET_SEED`
       and **back the last two up outside the platform**.
 - [ ] A real `ADMIN_PASSWORD`. Not the one in this repository.
-- [ ] Sepolia: fund a deployer (~2.15M gas), `npm run deploy:sepolia`, then set
-      `CONTRACT_ADDRESS`, `REGISTRAR_PRIVATE_KEY`, `BLOCKCHAIN_ENABLED=true`
-      and run `npm run backfill:anchors`.
+- [x] ~~Sepolia~~ — deployed and enabled. No backfill command is needed: the
+      chain sync worker anchors pending records on boot and every 3 minutes.
 
 ---
 

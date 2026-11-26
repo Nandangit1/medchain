@@ -71,8 +71,10 @@ const blockchainSchema = new mongoose.Schema(
     blockNumber: { type: Number, min: 0 },
     anchoredAt: Date,
     lastError: { type: String, trim: true, maxlength: 500 },
-    /** Failed anchoring attempts; the sync worker stops retrying at a ceiling. */
+    /** Failed anchoring attempts; the sync worker backs off and stops at a ceiling. */
     attempts: { type: Number, default: 0 },
+    /** Earliest time the sync worker may retry after a failure. */
+    nextAttemptAt: Date,
   },
   { _id: false }
 );

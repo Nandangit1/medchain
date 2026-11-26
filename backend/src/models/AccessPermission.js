@@ -71,6 +71,7 @@ const accessPermissionSchema = new mongoose.Schema(
       blockNumber: Number,
       lastError: { type: String, maxlength: 500 },
       attempts: { type: Number, default: 0 },
+      nextAttemptAt: Date,
     },
     revokeTx: {
       status: { type: String, enum: Object.values(BLOCKCHAIN_SYNC_STATUS) },
@@ -78,6 +79,7 @@ const accessPermissionSchema = new mongoose.Schema(
       blockNumber: Number,
       lastError: { type: String, maxlength: 500 },
       attempts: { type: Number, default: 0 },
+      nextAttemptAt: Date,
     },
   },
   { timestamps: true }
