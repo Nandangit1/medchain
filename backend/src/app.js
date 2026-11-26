@@ -64,7 +64,8 @@ const cspDirectives = {
   "media-src": ["'self'", "blob:"],
   "frame-ancestors": ["'none'"],
   "script-src": ["'self'", jitsiOrigin],
-  "frame-src": ["'self'", jitsiOrigin],
+  // Google's public map embed (no key) for the medical stores page.
+  "frame-src": ["'self'", jitsiOrigin, "https://maps.google.com", "https://www.google.com"],
 };
 
 /**

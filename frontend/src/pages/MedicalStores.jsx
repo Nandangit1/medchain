@@ -194,46 +194,148 @@ const StoreCard = ({ store, active, onSelect }) => (
   </div>
 );
 
-// --- Fallback without a key ----------------------------------------------------
+// --- Keyless mode: Google's public embed ---------------------------------------
+
+/**
+ * Google Maps without an API key or billing account.
+ *
+ * `maps.google.com/maps?q=...&output=embed` is Google's public embed: a real
+ * Google map with the matching places pinned, inside an iframe. It needs no
+ * key, so this mode works the moment the site is deployed. What it cannot do
+ * is hand the page the store data, so there is no list or distance sort --
+ * set GOOGLE_MAPS_API_KEY for that and the full view takes over.
+ */
+const embedUrl = (query) =>
+  `https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=14&output=embed`;
 
 const NoKeyFallback = ({ address }) => {
-  const near = address ? ` near ${address}` : " near me";
+  const [place, setPlace] = useState(address || "");
+  const [near, setNear] = useState(address || "");
+  const [tab, setTab] = useState("generic");
+  const [locating, setLocating] = useState(false);
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("This browser cannot share its location.");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const point = `${position.coords.latitude.toFixed(5)},${position.coords.longitude.toFixed(5)}`;
+        setNear(point);
+        setPlace("My current location");
+        setLocating(false);
+      },
+      () => {
+        setLocating(false);
+        toast.error("Location permission was denied. Type your area instead.");
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const target = near || "India";
+  const queries = {
+    generic: `Jan Aushadhi Kendra near ${target}`,
+    all: `pharmacy near ${target}`,
+  };
 
   return (
     <>
       <GenericExplainer />
-      <div className="bts-card p-4">
-        <h6 className="fw-bold mb-2">Find stores on Google Maps</h6>
-        <p className="small text-muted">
-          The built-in map is not switched on for this site yet, so these open Google Maps with the
-          search already filled in
-          {address ? " for your saved address" : ". Save your address on the Profile page for better results"}
-          .
-        </p>
-        <div className="d-flex flex-wrap gap-2">
-          <a
-            className="btn text-white"
-            style={{ background: GENERIC_COLOUR }}
-            href={mapsSearchUrl(`Jan Aushadhi Kendra${near}`)}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <FiMapPin className="me-1" /> Jan Aushadhi (generic) stores{near}
-          </a>
-          <a
-            className="btn text-white"
-            style={{ background: PHARMACY_COLOUR }}
-            href={mapsSearchUrl(`pharmacy${near}`)}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <FiMapPin className="me-1" /> All pharmacies{near}
-          </a>
-          <a className="btn btn-outline-secondary" href="https://janaushadhi.gov.in/" target="_blank" rel="noreferrer">
-            <FiExternalLink className="me-1" /> Official Jan Aushadhi site
-          </a>
+
+      <form
+        className="bts-card p-3 mb-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!place.trim()) {
+            toast.info("Type an area, city or PIN code, or use your location.");
+            return;
+          }
+          setNear(place.trim());
+        }}
+      >
+        <div className="row g-2 align-items-center">
+          <div className="col-lg-7">
+            <div className="input-group">
+              <span className="input-group-text">
+                <FiMapPin />
+              </span>
+              <Form.Control
+                value={place}
+                onChange={(event) => setPlace(event.target.value)}
+                placeholder="Area, street, city or PIN code"
+                aria-label="Address to search around"
+              />
+              <Button type="submit">
+                <FiSearch className="me-1" /> Search
+              </Button>
+            </div>
+          </div>
+          <div className="col-auto">
+            <Button variant="outline-primary" onClick={useMyLocation} disabled={locating}>
+              <FiCrosshair className="me-1" /> {locating ? "Locating…" : "Use my location"}
+            </Button>
+          </div>
         </div>
-      </div>
+        {!address && (
+          <div className="small text-muted mt-2">
+            Tip: save your address on the <Link to="/profile">Profile</Link> page and this map opens
+            around it automatically.
+          </div>
+        )}
+      </form>
+
+      {!near ? (
+        <div className="bts-card p-4 text-center text-muted">
+          Type your area or use your location to see stores near you.
+        </div>
+      ) : (
+        <>
+          <ButtonGroup className="w-100 mb-2">
+            <Button variant={tab === "generic" ? "success" : "outline-success"} onClick={() => setTab("generic")}>
+              Generic stores (Jan Aushadhi)
+            </Button>
+            <Button variant={tab === "all" ? "primary" : "outline-primary"} onClick={() => setTab("all")}>
+              All pharmacies
+            </Button>
+          </ButtonGroup>
+
+          <div
+            className="bts-card p-0 overflow-hidden"
+            style={{ borderTop: `4px solid ${tab === "generic" ? GENERIC_COLOUR : PHARMACY_COLOUR}` }}
+          >
+            <iframe
+              key={queries[tab]}
+              title={tab === "generic" ? "Generic medicine stores map" : "Pharmacies map"}
+              src={embedUrl(queries[tab])}
+              style={{ border: 0, width: "100%", height: 520, display: "block" }}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              allowFullScreen
+            />
+          </div>
+
+          <div className="d-flex flex-wrap gap-2 align-items-center mt-2 small">
+            <span className="text-muted">
+              Showing {tab === "generic" ? "Jan Aushadhi Kendras" : "pharmacies"} near{" "}
+              <strong>{place || near}</strong>. Click a pin for its address, hours and reviews.
+            </span>
+            <a
+              className="btn btn-sm btn-outline-secondary ms-auto"
+              href={mapsSearchUrl(queries[tab])}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <FiExternalLink className="me-1" /> Open in Google Maps for directions
+            </a>
+            <a className="btn btn-sm btn-outline-secondary" href="https://janaushadhi.gov.in/" target="_blank" rel="noreferrer">
+              Official Jan Aushadhi site
+            </a>
+          </div>
+        </>
+      )}
     </>
   );
 };
