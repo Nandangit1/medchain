@@ -564,44 +564,90 @@ const logAccessOnChain = async ({ record, viewer }) => {
  * This reads the chain, not MongoDB, so it is the version a patient can trust
  * even if the database were altered.
  */
-const getRecordHistory = async (onChainId) => {
+/**
+ * Public RPC providers cap how many blocks one eth_getLogs call may span
+ * (publicnode refuses somewhere between 50k and 100k on Sepolia). Asking for
+ * "block 0 to latest" -- twelve million blocks -- failed outright, and the
+ * history panel showed no events for records that plainly had them.
+ */
+const LOG_WINDOW_BLOCKS = 45000;
+/** How far back to look when a record's anchor block is unknown (~6 weeks on Sepolia). */
+const UNKNOWN_START_WINDOWS = 6;
+const RECORD_EVENTS = new Set([
+  "RecordAnchored",
+  "AccessGranted",
+  "AccessRevoked",
+  "AccessLogged",
+  "RecordDeactivated",
+]);
+
+/**
+ * Every on-chain event for one record, oldest first.
+ *
+ * One eth_getLogs per window, filtered by contract address and by the record
+ * id -- the first indexed topic of all five record events -- instead of five
+ * separate queries over the whole chain. The search starts at the block the
+ * record was anchored in, since nothing about it can precede that.
+ *
+ * @param {string|number} onChainId
+ * @param {{ fromBlock?: number }} [options]
+ */
+const getRecordHistory = async (onChainId, { fromBlock } = {}) => {
   if (!isEnabled() || !onChainId) {
     return [];
   }
 
-  const { contract } = getConnection();
-  const id = BigInt(onChainId);
+  const { contract, provider } = getConnection();
+  const address = await contract.getAddress();
+  const recordTopic = ethers.zeroPadValue(ethers.toBeHex(BigInt(onChainId)), 32);
+  const latest = await provider.getBlockNumber();
 
-  const queries = [
-    { name: "RecordAnchored", filter: contract.filters.RecordAnchored(id) },
-    { name: "AccessGranted", filter: contract.filters.AccessGranted(id) },
-    { name: "AccessRevoked", filter: contract.filters.AccessRevoked(id) },
-    { name: "AccessLogged", filter: contract.filters.AccessLogged(id) },
-    { name: "RecordDeactivated", filter: contract.filters.RecordDeactivated(id) },
-  ];
+  const start =
+    Number.isInteger(fromBlock) && fromBlock >= 0
+      ? fromBlock
+      : Math.max(0, latest - LOG_WINDOW_BLOCKS * UNKNOWN_START_WINDOWS);
 
-  const results = await Promise.all(
-    queries.map(async ({ name, filter }) => {
-      const events = await contract.queryFilter(filter, 0, "latest");
+  const windows = [];
+  for (let from = start; from <= latest; from += LOG_WINDOW_BLOCKS) {
+    windows.push([from, Math.min(from + LOG_WINDOW_BLOCKS - 1, latest)]);
+  }
 
-      return events.map((event) => ({
-        event: name,
-        blockNumber: event.blockNumber,
-        txHash: event.transactionHash,
-        timestamp: event.args?.timestamp ? Number(event.args.timestamp) * 1000 : null,
-        doctor: event.args?.doctor ?? null,
-        viewer: event.args?.viewer ?? null,
-        custodial: event.args?.custodial ?? null,
+  // A few windows at a time: fast for old records, polite to a free RPC.
+  const logs = [];
+  for (let i = 0; i < windows.length; i += 4) {
+    const batch = await Promise.all(
+      windows.slice(i, i + 4).map(([from, to]) =>
+        provider.getLogs({ address, topics: [null, recordTopic], fromBlock: from, toBlock: to })
+      )
+    );
+    logs.push(...batch.flat());
+  }
+
+  return logs
+    .map((log) => {
+      let parsed;
+      try {
+        parsed = contract.interface.parseLog(log);
+      } catch {
+        return null;
+      }
+
+      if (!parsed || !RECORD_EVENTS.has(parsed.name)) return null;
+
+      const args = parsed.args;
+      return {
+        event: parsed.name,
+        blockNumber: log.blockNumber,
+        txHash: log.transactionHash,
+        timestamp: args?.timestamp ? Number(args.timestamp) * 1000 : null,
+        doctor: args?.doctor ?? null,
+        viewer: args?.viewer ?? null,
+        custodial: args?.custodial ?? null,
         expiresAt:
-          event.args?.expiresAt && Number(event.args.expiresAt) > 0
-            ? new Date(Number(event.args.expiresAt) * 1000)
-            : null,
-      }));
+          args?.expiresAt && Number(args.expiresAt) > 0 ? new Date(Number(args.expiresAt) * 1000) : null,
+      };
     })
-  );
-
-  return results
-    .flat()
+    .filter(Boolean)
     .sort((a, b) => a.blockNumber - b.blockNumber || (a.timestamp ?? 0) - (b.timestamp ?? 0));
 };
 

@@ -279,7 +279,9 @@ const getRecordHistory = async ({ actor, recordId }) => {
     throw new AppError("You do not have permission to view this record's history.", 403);
   }
 
-  const events = await blockchainService.getRecordHistory(record.blockchain?.onChainId);
+  const events = await blockchainService.getRecordHistory(record.blockchain?.onChainId, {
+    fromBlock: record.blockchain?.blockNumber,
+  });
 
   return {
     recordId: String(record._id),

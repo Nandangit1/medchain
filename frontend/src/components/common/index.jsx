@@ -107,7 +107,15 @@ export const StatCard = ({ label, value, icon, tone = "info", hint }) => {
 };
 
 /** Maps a status string onto a coloured chip. */
-export const StatusChip = ({ status }) => {
+/**
+ * `kind` disambiguates statuses that share a word: a blockchain "confirmed" is
+ * an on-chain anchor, an appointment "confirmed" is a booking the doctor accepted.
+ */
+const KIND_OVERRIDES = {
+  appointment: { confirmed: ["success", "Confirmed"] },
+};
+
+export const StatusChip = ({ status, kind }) => {
   const map = {
     confirmed: ["success", "On-chain"],
     pending: ["warning", "Pending"],
@@ -122,7 +130,7 @@ export const StatusChip = ({ status }) => {
     no_show: ["danger", "No show"],
   };
 
-  const [tone, label] = map[status] || ["muted", status ?? "Unknown"];
+  const [tone, label] = KIND_OVERRIDES[kind]?.[status] || map[status] || ["muted", status ?? "Unknown"];
 
   return <span className={`bts-chip bts-chip-${tone}`}>{label}</span>;
 };

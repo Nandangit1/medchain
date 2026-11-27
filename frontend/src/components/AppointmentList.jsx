@@ -67,7 +67,7 @@ const AppointmentList = ({ state, perspective, onAction }) => {
                   <div className="text-truncate">{appointment.reason}</div>
                 </td>
                 <td>
-                  <StatusChip status={appointment.status} />
+                  <StatusChip status={appointment.status} kind="appointment" />
                 </td>
                 <td className="text-end">
                   <div className="d-flex gap-1 justify-content-end flex-wrap">
